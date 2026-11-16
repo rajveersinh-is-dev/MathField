@@ -21,10 +21,11 @@ class WendlandPartitionOfUnity:
     Constructs normalized C2 Wendland weighting windows across spatial patches.
     """
 
-    def __init__(self, overlap_ratio: float = 0.33) -> None:
+    def __init__(self, overlap_ratio: float = 0.33, separable: bool = True) -> None:
         if overlap_ratio < 0.0:
             raise ValueError(f"overlap_ratio must be non-negative, got {overlap_ratio}")
         self.overlap_ratio = overlap_ratio
+        self.separable = separable
 
     def compute_weights(
         self,
@@ -64,12 +65,23 @@ class WendlandPartitionOfUnity:
 
             dx = (x_flat - cx) / Rx
             dy = (y_flat - cy) / Ry
-            r = np.sqrt(dx * dx + dy * dy)
 
-            mask = r < 1.0
-            if np.any(mask):
-                sr = r[mask]
-                W[k, mask] = ((1.0 - sr) ** 4.0) * (4.0 * sr + 1.0)
+            if self.separable:
+                adx = np.abs(dx)
+                ady = np.abs(dy)
+                mask = (adx < 1.0) & (ady < 1.0)
+                if np.any(mask):
+                    sx = adx[mask]
+                    sy = ady[mask]
+                    wx = ((1.0 - sx) ** 4.0) * (4.0 * sx + 1.0)
+                    wy = ((1.0 - sy) ** 4.0) * (4.0 * sy + 1.0)
+                    W[k, mask] = wx * wy
+            else:
+                r = np.sqrt(dx * dx + dy * dy)
+                mask = r < 1.0
+                if np.any(mask):
+                    sr = r[mask]
+                    W[k, mask] = ((1.0 - sr) ** 4.0) * (4.0 * sr + 1.0)
 
         # Shepard Normalization
         sum_W = np.sum(W, axis=0)

@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 
-from mathfield.core.basis.fourier import Fourier2D
+from mathfield.core.basis.fourier import DCT2Basis, Fourier2D
 from mathfield.core.basis.polynomial import Chebyshev2D
 from mathfield.core.image_analysis import ImageAnalyzer
 from mathfield.core.local.local_patch import LocalPatch
@@ -94,6 +94,7 @@ class ModeBPipeline:
             Phi_solve = Phi_global
 
         global_channels = []
+        global_coeffs = []
         for ch in range(c):
             y_ch = img_arr[:, :, ch] if img_arr.ndim == 3 else img_arr
             b_ch = y_ch.ravel()
@@ -102,13 +103,18 @@ class ModeBPipeline:
             c_ch, _ = np.linalg.lstsq(Phi_solve, b_ch, rcond=1e-10)[:2]
             fit_ch = Phi_global @ c_ch
             global_channels.append(fit_ch.reshape(h, w))
+            global_coeffs.append(c_ch)
 
         global_recon = np.stack(global_channels, axis=-1) if c > 1 else global_channels[0]
         context.global_model = {
             "type": "mode_b_global_hybrid",
             "degree": global_deg,
+            "fourier_freq": fourier_freq,
             "basis_terms_count": n_terms,
             "condition_number": cond_rep["condition_number"],
+            "coefficients": np.column_stack(global_coeffs) if c > 1 else global_coeffs[0],
+            "chebyshev_basis": global_basis,
+            "fourier_basis": fourier_basis,
         }
 
         # --- Stage 3: Quadtree Local Decomposition ---
@@ -141,29 +147,50 @@ class ModeBPipeline:
         if context.is_cancelled():
             return StageStatus.CANCELLED
 
-        pou = WendlandPartitionOfUnity(overlap_ratio=float(self.config.get("overlap_ratio", 0.33)))
+        overlap_ratio = float(self.config.get("overlap_ratio", 0.20))
+        pou = WendlandPartitionOfUnity(overlap_ratio=overlap_ratio, separable=True)
         weights = pou.compute_weights(leaves, X, Y)  # (K, H, W)
 
         local_correction = np.zeros_like(img_arr)
         patches: List[LocalPatch] = []
 
-        for k, leaf in enumerate(leaves):
-            patch = LocalPatch(bounds=leaf.bounds)
-            # Weighted least squares on residual
-            leaf_weight = weights[k]
-            if c > 1:
-                patch_ch_fits = []
-                for ch in range(c):
-                    r_ch = residual[:, :, ch]
-                    patch.fit(r_ch, X, Y, weights=leaf_weight, reg_lambda=1e-4)
-                    fit_k = patch.evaluate(X, Y)
-                    patch_ch_fits.append(fit_k)
-                patch_fit = np.stack(patch_ch_fits, axis=-1)
-            else:
-                patch.fit(residual, X, Y, weights=leaf_weight, reg_lambda=1e-4)
-                patch_fit = patch.evaluate(X, Y)
+        local_basis_type = str(self.config.get("local_basis_type", "dct2")).lower()
+        local_freq = int(self.config.get("local_freq", 8))
+        reg_lambda = float(self.config.get("reg_lambda", 1e-5))
 
-            local_correction += np.expand_dims(leaf_weight, axis=-1) * patch_fit if c > 1 else leaf_weight * patch_fit
+        for k, leaf in enumerate(leaves):
+            leaf_weight = weights[k]
+            active = leaf_weight > 1e-12
+            if not np.any(active):
+                patch = LocalPatch(bounds=leaf.bounds)
+                patches.append(patch)
+                continue
+
+            rows, cols = np.where(active)
+            r0, r1 = int(rows.min()), int(rows.max()) + 1
+            c0, c1 = int(cols.min()), int(cols.max()) + 1
+
+            sub_X = X[r0:r1, c0:c1]
+            sub_Y = Y[r0:r1, c0:c1]
+            sub_W = leaf_weight[r0:r1, c0:c1]
+            sub_res = residual[r0:r1, c0:c1]
+
+            if local_basis_type == "dct2":
+                fx = max(1, min(local_freq, c1 - c0 - 1))
+                fy = max(1, min(local_freq, r1 - r0 - 1))
+                patch_basis = DCT2Basis(freq_x=fx, freq_y=fy, x_bounds=(-1.0, 1.0), y_bounds=(-1.0, 1.0))
+            else:
+                deg = int(self.config.get("degree", 3))
+                patch_basis = Chebyshev2D(deg_x=deg, deg_y=deg, truncation="total_degree")
+
+            patch = LocalPatch(bounds=leaf.bounds, basis=patch_basis)
+            patch.fit(sub_res, sub_X, sub_Y, weights=sub_W, reg_lambda=reg_lambda)
+            sub_fit = patch.evaluate(sub_X, sub_Y)
+
+            if c > 1:
+                local_correction[r0:r1, c0:c1] += np.expand_dims(sub_W, axis=-1) * sub_fit
+            else:
+                local_correction[r0:r1, c0:c1] += sub_W * sub_fit
             patches.append(patch)
 
         context.local_decomposition = {

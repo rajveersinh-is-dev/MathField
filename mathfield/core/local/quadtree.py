@@ -141,16 +141,16 @@ class QuadtreeDecomposition:
         x_mid = 0.5 * (x_min + x_max)
         y_mid = 0.5 * (y_min + y_max)
 
-        # In image coordinates:
-        # Top-Left (NW): r0..r_mid, c0..c_mid -> continuous x: x_min..x_mid, y: y_mid..y_max
-        # Top-Right (NE): r0..r_mid, c_mid..c1 -> continuous x: x_mid..x_max, y: y_mid..y_max
-        # Bottom-Left (SW): r_mid..r1, c0..c_mid -> continuous x: x_min..x_mid, y: y_min..y_mid
-        # Bottom-Right (SE): r_mid..r1, c_mid..c1 -> continuous x: x_mid..x_max, y: y_min..y_mid
+        # In domain coordinates (matching domain.py where row 0 is y_min and row h is y_max):
+        # Top-Left (NW): r0..r_mid, c0..c_mid -> continuous x: x_min..x_mid, y: y_min..y_mid
+        # Top-Right (NE): r0..r_mid, c_mid..c1 -> continuous x: x_mid..x_max, y: y_min..y_mid
+        # Bottom-Left (SW): r_mid..r1, c0..c_mid -> continuous x: x_min..x_mid, y: y_mid..y_max
+        # Bottom-Right (SE): r_mid..r1, c_mid..c1 -> continuous x: x_mid..x_max, y: y_mid..y_max
 
-        nw = QuadtreeNode(bounds=(x_min, y_mid, x_mid, y_max), depth=node.depth + 1)
-        ne = QuadtreeNode(bounds=(x_mid, y_mid, x_max, y_max), depth=node.depth + 1)
-        sw = QuadtreeNode(bounds=(x_min, y_min, x_mid, y_mid), depth=node.depth + 1)
-        se = QuadtreeNode(bounds=(x_mid, y_min, x_max, y_mid), depth=node.depth + 1)
+        nw = QuadtreeNode(bounds=(x_min, y_min, x_mid, y_mid), depth=node.depth + 1)
+        ne = QuadtreeNode(bounds=(x_mid, y_min, x_max, y_mid), depth=node.depth + 1)
+        sw = QuadtreeNode(bounds=(x_min, y_mid, x_mid, y_max), depth=node.depth + 1)
+        se = QuadtreeNode(bounds=(x_mid, y_mid, x_max, y_max), depth=node.depth + 1)
 
         node.children = [nw, ne, sw, se]
 

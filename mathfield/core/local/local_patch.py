@@ -85,38 +85,82 @@ class LocalPatch:
         """
         Fit local basis to residual using regularized (weighted) least squares:
         min || sqrt(W) (Phi * c - R) ||^2 + lambda * ||c||^2.
+        Supports single-channel (H, W) or multi-channel (H, W, C) residuals.
         Returns final weighted root-mean-squared error.
         """
         u, v = self.normalize_coordinates(X, Y)
-        Phi = self.basis.basis_matrix(u, v)
-        r_flat = residual.ravel()
 
+        # Check active region if weights provided
         if weights is not None:
-            w_flat = np.sqrt(np.maximum(weights.ravel(), 0.0))
-            A = Phi * w_flat[:, np.newaxis]
-            b = r_flat * w_flat
+            w_flat = weights.ravel()
+            active = w_flat > 1e-12
+            if np.sum(active) >= self.basis.num_terms:
+                u_fit = u.ravel()[active]
+                v_fit = v.ravel()[active]
+                w_fit = np.sqrt(np.maximum(w_flat[active], 0.0))
+                Phi = self.basis.basis_matrix(u_fit, v_fit)
+                A = Phi * w_fit[:, np.newaxis]
+                if residual.ndim == 3:
+                    r_fit = residual.reshape(-1, residual.shape[2])[active, :]
+                else:
+                    r_fit = residual.ravel()[active]
+            else:
+                Phi = self.basis.basis_matrix(u, v)
+                w_sq = np.sqrt(np.maximum(w_flat, 0.0))
+                A = Phi * w_sq[:, np.newaxis]
+                if residual.ndim == 3:
+                    r_fit = residual.reshape(-1, residual.shape[2])
+                else:
+                    r_fit = residual.ravel()
+                w_fit = w_sq
         else:
+            Phi = self.basis.basis_matrix(u, v)
             A = Phi
-            b = r_flat
+            w_fit = None
+            if residual.ndim == 3:
+                r_fit = residual.reshape(-1, residual.shape[2])
+            else:
+                r_fit = residual.ravel()
 
         p = self.basis.num_terms
-        if reg_lambda > 0.0:
-            # Tikhonov regularization
-            A_aug = np.vstack([A, np.sqrt(reg_lambda) * np.eye(p)])
-            b_aug = np.concatenate([b, np.zeros(p)])
-            c_opt, _, _, _ = np.linalg.lstsq(A_aug, b_aug, rcond=1e-10)
+        if residual.ndim == 3:
+            c_channels = []
+            c = residual.shape[2]
+            for ch in range(c):
+                b_ch = r_fit[:, ch] * (w_fit if w_fit is not None else 1.0)
+                if reg_lambda > 0.0:
+                    A_aug = np.vstack([A, np.sqrt(reg_lambda) * np.eye(p)])
+                    b_aug = np.concatenate([b_ch, np.zeros(p)])
+                    c_opt, _, _, _ = np.linalg.lstsq(A_aug, b_aug, rcond=1e-10)
+                else:
+                    c_opt, _, _, _ = np.linalg.lstsq(A, b_ch, rcond=1e-10)
+                c_channels.append(c_opt)
+            self.coefficients = np.column_stack(c_channels)
+            fitted = Phi @ self.coefficients
+            err = float(np.mean((fitted - r_fit) ** 2))
         else:
-            c_opt, _, _, _ = np.linalg.lstsq(A, b, rcond=1e-10)
+            b = r_fit * (w_fit if w_fit is not None else 1.0)
+            if reg_lambda > 0.0:
+                A_aug = np.vstack([A, np.sqrt(reg_lambda) * np.eye(p)])
+                b_aug = np.concatenate([b, np.zeros(p)])
+                c_opt, _, _, _ = np.linalg.lstsq(A_aug, b_aug, rcond=1e-10)
+            else:
+                c_opt, _, _, _ = np.linalg.lstsq(A, b, rcond=1e-10)
+            self.coefficients = c_opt
+            fitted = Phi @ c_opt
+            err = float(np.mean((fitted - r_fit) ** 2))
 
-        self.coefficients = c_opt
-        fitted = Phi @ c_opt
-        err = float(np.mean((fitted - r_flat) ** 2))
         self.error = err
         return err
 
     def evaluate(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
         """Evaluate local patch expression on coordinate grid."""
         u, v = self.normalize_coordinates(X, Y)
+        if self.coefficients is not None and self.coefficients.ndim == 2:
+            ch_outs = []
+            for ch in range(self.coefficients.shape[1]):
+                ch_outs.append(self.basis.evaluate(u, v, self.coefficients[:, ch]))
+            return np.stack(ch_outs, axis=-1)
         return self.basis.evaluate(u, v, self.coefficients)
 
     def to_ast(
@@ -131,8 +175,9 @@ class LocalPatch:
         """
         cx, cy = self.center
         hx, hy = self.half_widths
+        coeffs = self.coefficients[:, 0] if (self.coefficients is not None and self.coefficients.ndim == 2) else self.coefficients
         base_ast = self.basis.to_ast(
-            coefficients=self.coefficients,
+            coefficients=coeffs,
             param_offset=param_offset,
             symbolic_params=symbolic_params,
             prune_threshold=prune_threshold,
