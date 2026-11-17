@@ -5,6 +5,7 @@ LaTeX and PDF mathematical reports, CSV parameter tables, versioned JSON project
 """
 
 from mathfield.export.raster import export_png, export_jpg
+from mathfield.export.artwork_poster import export_artwork_poster
 from mathfield.export.svg import export_svg
 from mathfield.export.python_script import export_standalone_script
 from mathfield.export.latex_report import export_latex_report
@@ -16,6 +17,7 @@ from mathfield.export.bundle import export_bundle
 __all__ = [
     "export_png",
     "export_jpg",
+    "export_artwork_poster",
     "export_svg",
     "export_standalone_script",
     "export_latex_report",

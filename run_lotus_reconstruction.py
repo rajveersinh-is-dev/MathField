@@ -25,6 +25,7 @@ from PIL import Image
 from mathfield.core.domain import CoordinateDomain2D, DomainMode
 from mathfield.core.pipeline.mode_b import ModeBPipeline
 from mathfield.core.pipeline.stage import PipelineContext
+from mathfield.export.artwork_poster import export_artwork_poster
 from mathfield.export.bundle import export_bundle
 from mathfield.export.csv_export import export_csv_parameters
 from mathfield.export.latex_report import export_latex_report
@@ -398,7 +399,14 @@ def main() -> None:
     export_bundle(export_result, OUTPUT_DIR / "reproducibility_bundle.zip", as_zip=True)
     print("✔ Exported reproducibility_bundle.zip (Complete standalone archive)")
 
-    # Copy visual comparison images into artifact directory
+    # 9. Mathematical Artwork Posters (Hamid Naderi Yeganeh Style)
+    export_artwork_poster(export_result, OUTPUT_DIR / "lotus_mathematical_artwork.png", layout="square", width=1600)
+    export_artwork_poster(export_result, OUTPUT_DIR / "lotus_mathematical_artwork.jpg", layout="square", width=1600, quality=95)
+    export_artwork_poster(export_result, OUTPUT_DIR / "lotus_mathematical_artwork_portrait.png", layout="portrait", width=1200)
+    export_artwork_poster(export_result, OUTPUT_DIR / "lotus_mathematical_artwork_portrait.jpg", layout="portrait", width=1200, quality=95)
+    print("✔ Exported lotus_mathematical_artwork (Square & Portrait posters in Hamid Naderi Yeganeh style)")
+
+    # Copy visual comparison images and artwork posters into artifact directory
     artifact_orig = ARTIFACT_DIR / "lotus_original.jpg"
     artifact_recon = ARTIFACT_DIR / "lotus_reconstructed.png"
     artifact_diff = ARTIFACT_DIR / "lotus_error_map.png"
@@ -412,7 +420,11 @@ def main() -> None:
     diff_norm = np.clip(diff_mag * 5.0 * 255.0, 0, 255).astype(np.uint8)  # 5x amplified for visualization
     Image.fromarray(diff_norm, mode="L").save(artifact_diff)
 
-    print("\n✔ Visual assets copied to artifact directory for presentation.")
+    shutil.copy2(OUTPUT_DIR / "lotus_mathematical_artwork.png", ARTIFACT_DIR / "lotus_mathematical_artwork.png")
+    shutil.copy2(OUTPUT_DIR / "lotus_mathematical_artwork.jpg", ARTIFACT_DIR / "lotus_mathematical_artwork.jpg")
+    shutil.copy2(OUTPUT_DIR / "lotus_mathematical_artwork_portrait.png", ARTIFACT_DIR / "lotus_mathematical_artwork_portrait.png")
+
+    print("\n✔ Visual assets and mathematical artwork posters copied to artifact directory for presentation.")
     print("All tasks completed successfully!")
 
 

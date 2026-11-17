@@ -90,3 +90,28 @@ def test_standalone_reproduction_script_generation():
     assert "from PIL import Image" in script
     assert "evaluate_field" in script
     assert "def main():" in script
+
+
+def test_export_artwork_poster_square_and_portrait(tmp_path):
+    from mathfield.export.artwork_poster import export_artwork_poster
+
+    dummy_arr = np.zeros((32, 48, 3), dtype=np.uint8)
+    dummy_arr[10:22, 12:36] = 200  # Non-trivial test pattern
+    result = {
+        "coordinate_domain": {"pixel_width": 48, "pixel_height": 32},
+        "rendered_image": dummy_arr,
+        "global_equations": {"R": "1.0", "G": "0.5", "B": "0.2"},
+        "patch_equations": [{"id": "P_001", "bounds": [-1, -1, 1, 1], "formula": "cos(u)"}],
+    }
+
+    out_sq = tmp_path / "poster_sq.png"
+    out_pt = tmp_path / "poster_pt.jpg"
+
+    export_artwork_poster(result, out_sq, layout="square", width=400)
+    assert out_sq.exists()
+    assert out_sq.stat().st_size > 1000
+
+    export_artwork_poster(result, out_pt, layout="portrait", width=300, quality=90)
+    assert out_pt.exists()
+    assert out_pt.stat().st_size > 1000
+
