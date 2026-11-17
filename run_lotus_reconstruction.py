@@ -164,7 +164,12 @@ def main() -> None:
 
     recon_arr = ctx.rendered_image
 
-    # Build model parameters dictionary from genuine fitted coefficients
+    # Compute absolute error heatmap (5x amplified for visualization)
+    diff = np.abs(recon_arr - arr)
+    diff_mag = np.mean(diff, axis=-1)
+    diff_norm = np.clip(diff_mag * 5.0 * 255.0, 0, 255).astype(np.uint8)
+
+    # 1. Build model parameters dictionary from genuine fitted coefficients
     parameters_dict = {}
     g_coeffs = ctx.global_model["coefficients"]
     n_global = g_coeffs.shape[0] if isinstance(g_coeffs, np.ndarray) else 100
@@ -188,6 +193,112 @@ def main() -> None:
                 }
 
     print(f"Total Discovered Parameter Count: {len(parameters_dict):,} coefficients")
+
+    # 2. Extract explicit analytical global equations for each colour channel
+    cheb_b = ctx.global_model["chebyshev_basis"]
+    four_b = ctx.global_model["fourier_basis"]
+
+    def format_global_channel(c_idx: int, max_terms: int = 8) -> str:
+        terms = []
+        # Chebyshev polynomial terms
+        for k, (i, j) in enumerate(cheb_b.indices):
+            coeff = g_coeffs[k, c_idx]
+            if abs(coeff) > 1e-4:
+                if i == 0 and j == 0:
+                    name = "1"
+                elif i > 0 and j == 0:
+                    name = f"T_{i}(x)"
+                elif i == 0 and j > 0:
+                    name = f"T_{j}(y)"
+                else:
+                    name = f"T_{i}(x)T_{j}(y)"
+                terms.append((abs(coeff), f"{coeff:+.4f}·{name}"))
+        # Fourier harmonic terms
+        base_idx = cheb_b.num_terms
+        for m, (kx, ky) in enumerate(four_b.freq_pairs):
+            cos_coeff = g_coeffs[base_idx + 2 * m, c_idx]
+            sin_coeff = g_coeffs[base_idx + 2 * m + 1, c_idx]
+            arg = f"({int(kx)}πx" if kx != 0 else "("
+            if ky != 0:
+                arg += f" + {int(ky)}πy)" if kx != 0 else f"{int(ky)}πy)"
+            else:
+                arg += ")"
+            if abs(cos_coeff) > 1e-4:
+                terms.append((abs(cos_coeff), f"{cos_coeff:+.4f}·cos{arg}"))
+            if abs(sin_coeff) > 1e-4:
+                terms.append((abs(sin_coeff), f"{sin_coeff:+.4f}·sin{arg}"))
+
+        terms.sort(key=lambda t: t[0], reverse=True)
+        leading = [t[1] for t in terms[:max_terms]]
+        return " ".join(leading) + f" + ... [{len(terms)} total terms]"
+
+    global_equations = {
+        "R": format_global_channel(0),
+        "G": format_global_channel(1),
+        "B": format_global_channel(2),
+    }
+
+    # 3. Extract explicit analytical formulas for all discovered local patches
+    def format_patch_formula(patch: Any, max_terms: int = 5) -> str:
+        if patch.coefficients is None or patch.basis is None:
+            return "0"
+        c = patch.coefficients
+        if c.ndim == 2:
+            c_mag = np.linalg.norm(c, axis=-1)
+            c_mean = np.mean(c, axis=-1)
+        else:
+            c_mag = np.abs(c)
+            c_mean = c
+        indices = getattr(patch.basis, "indices", [])
+        terms = []
+        for k, (p, q) in enumerate(indices):
+            coeff = c_mean[k]
+            mag = c_mag[k]
+            if mag > 1e-4:
+                if p == 0 and q == 0:
+                    name = "1"
+                elif p > 0 and q == 0:
+                    name = f"cos({p}πu)"
+                elif p == 0 and q > 0:
+                    name = f"cos({q}πv)"
+                else:
+                    name = f"cos({p}πu)·cos({q}πv)"
+                terms.append((mag, f"{coeff:+.4f}·{name}"))
+        terms.sort(key=lambda t: t[0], reverse=True)
+        if not terms:
+            return "0.0000"
+        leading = [t[1] for t in terms[:max_terms]]
+        return " ".join(leading) + (f" + ... [{len(terms)} terms]" if len(terms) > max_terms else "")
+
+    patch_equations = []
+    for p_idx, patch in enumerate(patches):
+        lx0, ly0, lx1, ly1 = patch.bounds
+        cx, cy = patch.center
+        hx, hy = patch.half_widths
+        Rx = (1.0 + config["overlap_ratio"]) * hx
+        Ry = (1.0 + config["overlap_ratio"]) * hy
+        c = patch.coefficients
+        energy = float(np.sum(c ** 2)) if c is not None and c.size > 0 else 0.0
+        formula = format_patch_formula(patch, max_terms=5)
+        patch_equations.append(
+            {
+                "id": f"P_{p_idx+1:03d}",
+                "bounds": (float(lx0), float(ly0), float(lx1), float(ly1)),
+                "center": (float(cx), float(cy)),
+                "radius": (float(Rx), float(Ry)),
+                "energy": energy,
+                "formula": formula,
+                "terms_count": patch.basis.num_terms if patch.basis else 0,
+            }
+        )
+
+    # Sort patches by harmonic energy descending so high-detail flower patches are cataloged first
+    patch_equations_sorted = sorted(patch_equations, key=lambda p: p["energy"], reverse=True)
+
+    # Save full catalog of all 298 patch equations to JSON for research completeness
+    with open(OUTPUT_DIR / "patch_equations.json", "w", encoding="utf-8") as f:
+        json.dump(patch_equations_sorted, f, indent=2)
+    print(f"✔ Exported patch_equations.json ({len(patch_equations_sorted)} analytical patch equations)")
 
     global_model = {
         "type": "mode_b_global_hybrid_chebyshev_fourier",
@@ -217,13 +328,20 @@ def main() -> None:
         "color_space": "RGB",
         "mode": "MODE_B_FIDELITY",
         "global_model": global_model,
+        "global_equations": global_equations,
+        "patch_equations": patch_equations_sorted,
         "expressions": {
             "formula": f"chebyshev2d_deg_{config['global_degree']} + fourier2d_freq_{config['fourier_freq']} + quadtree_dct2_local_patches",
+            "R": global_equations["R"],
+            "G": global_equations["G"],
+            "B": global_equations["B"],
         },
         "parameters": parameters_dict,
         "metrics": metrics,
         "rendered_image": recon_arr,
+        "reconstructed_image": recon_arr,
         "original_image": arr,
+        "error_heatmap": diff_norm,
     }
 
     print("\n--- Exporting Deliverables ---")
