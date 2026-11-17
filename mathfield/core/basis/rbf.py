@@ -122,6 +122,8 @@ class WendlandC2RBF(BasisFunction2D):
         prune_threshold: float = 1e-12,
     ) -> ASTNode:
         c = self._coefficients if coefficients is None else np.asarray(coefficients, dtype=np.float64).ravel()
+        if len(c) < self.num_terms:
+            raise ValueError(f"Coefficients length {len(c)} is less than required basis terms {self.num_terms}")
         term_nodes: List[ASTNode] = []
 
         for k in range(self.num_terms):
@@ -132,7 +134,9 @@ class WendlandC2RBF(BasisFunction2D):
             cx, cy = float(self.centers[k, 0]), float(self.centers[k, 1])
             R = float(self.radii[k])
 
-            p_node: ASTNode = ParameterNode(f"c{param_offset + k}", param_offset + k) if symbolic_params else ConstantNode(coeff_val)
+            p_node: ASTNode = (
+                ParameterNode(f"c{param_offset + k}", param_offset + k) if symbolic_params else ConstantNode(coeff_val)
+            )
             dist_ast = _build_euclidean_distance_ast(cx, cy)
             rbf_ast = FunctionCallNode("rbf_wendland", (dist_ast, ConstantNode(R)))
             term_nodes.append(BinaryOpNode("*", p_node, rbf_ast))
@@ -225,6 +229,8 @@ class GaussianRBF(BasisFunction2D):
         prune_threshold: float = 1e-12,
     ) -> ASTNode:
         c = self._coefficients if coefficients is None else np.asarray(coefficients, dtype=np.float64).ravel()
+        if len(c) < self.num_terms:
+            raise ValueError(f"Coefficients length {len(c)} is less than required basis terms {self.num_terms}")
         term_nodes: List[ASTNode] = []
 
         for k in range(self.num_terms):
@@ -235,7 +241,9 @@ class GaussianRBF(BasisFunction2D):
             cx, cy = float(self.centers[k, 0]), float(self.centers[k, 1])
             eps = float(self.epsilons[k])
 
-            p_node: ASTNode = ParameterNode(f"c{param_offset + k}", param_offset + k) if symbolic_params else ConstantNode(coeff_val)
+            p_node: ASTNode = (
+                ParameterNode(f"c{param_offset + k}", param_offset + k) if symbolic_params else ConstantNode(coeff_val)
+            )
             dist_ast = _build_euclidean_distance_ast(cx, cy)
             rbf_ast = FunctionCallNode("rbf_gaussian", (dist_ast, ConstantNode(eps)))
             term_nodes.append(BinaryOpNode("*", p_node, rbf_ast))
@@ -328,6 +336,8 @@ class MultiquadricRBF(BasisFunction2D):
         prune_threshold: float = 1e-12,
     ) -> ASTNode:
         c = self._coefficients if coefficients is None else np.asarray(coefficients, dtype=np.float64).ravel()
+        if len(c) < self.num_terms:
+            raise ValueError(f"Coefficients length {len(c)} is less than required basis terms {self.num_terms}")
         term_nodes: List[ASTNode] = []
 
         for k in range(self.num_terms):
@@ -338,7 +348,9 @@ class MultiquadricRBF(BasisFunction2D):
             cx, cy = float(self.centers[k, 0]), float(self.centers[k, 1])
             eps = float(self.epsilons[k])
 
-            p_node: ASTNode = ParameterNode(f"c{param_offset + k}", param_offset + k) if symbolic_params else ConstantNode(coeff_val)
+            p_node: ASTNode = (
+                ParameterNode(f"c{param_offset + k}", param_offset + k) if symbolic_params else ConstantNode(coeff_val)
+            )
             dist_ast = _build_euclidean_distance_ast(cx, cy)
             rbf_ast = FunctionCallNode("rbf_multiquadric", (dist_ast, ConstantNode(eps)))
             term_nodes.append(BinaryOpNode("*", p_node, rbf_ast))
@@ -354,6 +366,7 @@ class MultiquadricRBF(BasisFunction2D):
 
 
 # --- Deterministic Center Placement Strategies ---
+
 
 def generate_uniform_centers(
     nx: int,

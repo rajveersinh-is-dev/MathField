@@ -2,36 +2,6 @@
 MathField Core Abstract Syntax Tree (AST) Package.
 """
 
-from mathfield.core.ast.tokens import (
-    LexerError,
-    Token,
-    TokenType,
-    tokenize,
-)
-from mathfield.core.ast.nodes import (
-    ASTNode,
-    BinaryOpNode,
-    ConstantNode,
-    FUNCTION_ARITIES,
-    FunctionCallNode,
-    ParameterNode,
-    UnaryOpNode,
-    VariableNode,
-    validate_parameter_bounds,
-)
-from mathfield.core.ast.parser import (
-    ParseError,
-    Parser,
-    parse,
-)
-from mathfield.core.ast.transforms import (
-    diff,
-    is_constant,
-    is_neg_one,
-    is_one,
-    is_zero,
-    simplify,
-)
 from mathfield.core.ast.domain import (
     PoleWarning,
     clamp_fn,
@@ -50,6 +20,36 @@ from mathfield.core.ast.domain import (
     regularized_div,
     sigmoid_fn,
     softplus_fn,
+)
+from mathfield.core.ast.nodes import (
+    FUNCTION_ARITIES,
+    ASTNode,
+    BinaryOpNode,
+    ConstantNode,
+    FunctionCallNode,
+    ParameterNode,
+    UnaryOpNode,
+    VariableNode,
+    validate_parameter_bounds,
+)
+from mathfield.core.ast.parser import (
+    ParseError,
+    Parser,
+    parse,
+)
+from mathfield.core.ast.tokens import (
+    LexerError,
+    Token,
+    TokenType,
+    tokenize,
+)
+from mathfield.core.ast.transforms import (
+    diff,
+    is_constant,
+    is_neg_one,
+    is_one,
+    is_zero,
+    simplify,
 )
 
 __all__ = [

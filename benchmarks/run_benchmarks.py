@@ -9,15 +9,16 @@ to provide statistically rigorous, unadulterated benchmark measurements.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
-import time
 from typing import Any, Callable, Dict, List, Union
 
 
 @dataclass(frozen=True, slots=True)
 class TimingResult:
     """High-resolution timing profile."""
+
     mean_ms: float
     warmup_count: int
     timed_count: int

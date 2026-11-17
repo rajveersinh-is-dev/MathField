@@ -81,9 +81,9 @@ class Rational2D(BasisFunction2D):
                 i, j = 0, 0
             term = np.ones(N, dtype=np.float64)
             if i > 0:
-                term *= (x_flat ** i)
+                term *= x_flat**i
             if j > 0:
-                term *= (y_flat ** j)
+                term *= y_flat**j
             Phi[:, k] = term
         return Phi
 
@@ -113,7 +113,7 @@ class Rational2D(BasisFunction2D):
         Q_lin = Phi_den @ den_c
 
         if self.positive_denominator:
-            Q = 1.0 + (Q_lin ** 2)
+            Q = 1.0 + (Q_lin**2)
         else:
             Q = 1.0 + Q_lin
             # Protected division

@@ -9,10 +9,10 @@ Unit and integration test suite for Milestone 2 reconstruction pipeline:
 """
 
 import math
-import numpy as np
-import pytest
 
-from mathfield.core.domain import CoordinateDomain2D, DomainMode
+import numpy as np
+
+from mathfield.core.domain import CoordinateDomain2D
 from mathfield.core.image_analysis import ImageAnalyzer
 from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
 from mathfield.core.local.quadtree import QuadtreeDecomposition, QuadtreeNode
@@ -45,6 +45,14 @@ def test_stage1_image_analysis() -> None:
     res_checker = analyzer.analyze(checker)
     assert res_checker.total_variation > 0.0
     assert res_checker.entropy > 0.0
+
+    # Empty array edge cases
+    empty_arr = np.array([])
+    assert analyzer.compute_total_variation(empty_arr) == 0.0
+    assert analyzer.compute_shannon_entropy(empty_arr) == 0.0
+    np.testing.assert_allclose(analyzer.compute_channel_correlations(empty_arr), np.eye(1))
+
+
 
 
 def test_stage3_quadtree_subdivision() -> None:
@@ -99,6 +107,17 @@ def test_stage4_varpro_convergence() -> None:
     np.testing.assert_allclose(res.theta_opt, [2.0, 3.0], atol=1e-2)
     np.testing.assert_allclose(res.c_opt, [1.5, -0.8], atol=1e-2)
 
+    # Pure linear subproblem: empty theta_init
+    def linear_only_basis(theta: np.ndarray, X_coord: np.ndarray, Y_coord: np.ndarray) -> np.ndarray:
+        x_flat = X_coord.ravel()
+        return np.column_stack([np.ones_like(x_flat), x_flat])
+
+    y_linear = 2.0 + 3.0 * x
+    res_linear = solver.fit(linear_only_basis, x, Y, y_linear, theta_init=np.array([]))
+    assert res_linear.converged is True
+    assert res_linear.n_iter == 0
+    np.testing.assert_allclose(res_linear.c_opt, [2.0, 3.0], atol=1e-5)
+
 
 def test_stage4_levenberg_marquardt_adaptive_damping() -> None:
     # Minimize Rosenbrock-like residual: r(x) = [10*(x1 - x0^2), 1 - x0]
@@ -106,15 +125,28 @@ def test_stage4_levenberg_marquardt_adaptive_damping() -> None:
         return np.array([10.0 * (x[1] - x[0] ** 2), 1.0 - x[0]])
 
     def jac_fn(x: np.ndarray) -> np.ndarray:
-        return np.array([
-            [-20.0 * x[0], 10.0],
-            [-1.0, 0.0],
-        ])
+        return np.array(
+            [
+                [-20.0 * x[0], 10.0],
+                [-1.0, 0.0],
+            ]
+        )
 
     lm = LevenbergMarquardtOptimizer(initial_lambda=1e-3, max_iter=50)
     res = lm.minimize(res_fn, jac_fn, x0=np.array([0.0, 0.0]))
     assert res["cost"] < 1e-6
     np.testing.assert_allclose(res["x"], [1.0, 1.0], atol=1e-3)
+
+    # Edge cases: max_iter <= 0 and empty x0
+    lm_zero = LevenbergMarquardtOptimizer(max_iter=0)
+    res_zero = lm_zero.minimize(res_fn, jac_fn, x0=np.array([0.5, 0.5]))
+    assert res_zero["n_iter"] == 0
+    assert not res_zero["converged"]
+
+    res_empty = lm.minimize(lambda x: np.array([]), lambda x: np.zeros((0, 0)), x0=np.array([]))
+    assert res_empty["converged"] is True
+    assert res_empty["n_iter"] == 0
+
 
 
 def test_stage4_deterministic_evolutionary_seeding() -> None:

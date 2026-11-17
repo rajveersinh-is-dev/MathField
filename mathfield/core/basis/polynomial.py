@@ -18,7 +18,6 @@ from mathfield.core.ast.nodes import (
     BinaryOpNode,
     ConstantNode,
     ParameterNode,
-    UnaryOpNode,
     VariableNode,
 )
 from mathfield.core.basis.base import BasisFunction2D
@@ -166,7 +165,7 @@ class Chebyshev2D(BasisFunction2D):
         c_prev1 = np.zeros(order + 1, dtype=np.float64)
         c_prev1[1] = 1.0
 
-        for n in range(2, order + 1):
+        for _ in range(2, order + 1):
             c_curr = np.zeros(order + 1, dtype=np.float64)
             # 2 * x * T_{n-1}(x): shift c_prev1 right by 1 and multiply by 2
             c_curr[1:] = 2.0 * c_prev1[:-1]
@@ -185,6 +184,8 @@ class Chebyshev2D(BasisFunction2D):
         prune_threshold: float = 1e-12,
     ) -> ASTNode:
         c = self._coefficients if coefficients is None else np.asarray(coefficients, dtype=np.float64).ravel()
+        if len(c) < self.num_terms:
+            raise ValueError(f"Coefficients length {len(c)} is less than required basis terms {self.num_terms}")
 
         term_nodes: List[ASTNode] = []
         for k, (i, j) in enumerate(self.indices):
@@ -338,6 +339,8 @@ class Legendre2D(BasisFunction2D):
         prune_threshold: float = 1e-12,
     ) -> ASTNode:
         c = self._coefficients if coefficients is None else np.asarray(coefficients, dtype=np.float64).ravel()
+        if len(c) < self.num_terms:
+            raise ValueError(f"Coefficients length {len(c)} is less than required basis terms {self.num_terms}")
 
         term_nodes: List[ASTNode] = []
         for k, (i, j) in enumerate(self.indices):

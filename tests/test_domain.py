@@ -5,6 +5,7 @@ Unit test suite for mathfield.core.domain (CoordinateDomain2D, DomainMode).
 """
 
 import math
+
 import numpy as np
 import pytest
 
@@ -92,6 +93,16 @@ def test_domain_serialization() -> None:
     assert recovered.y_bounds == domain.y_bounds
 
 
+def test_domain_mode_aliases_and_properties() -> None:
+    assert DomainMode.ISOTROPIC == DomainMode.ASPECT_PRESERVED
+    assert DomainMode.SQUARE == DomainMode.UNIT_SQUARE
+    assert DomainMode.from_str("aspect_preserved") == DomainMode.ASPECT_PRESERVED
+    assert DomainMode.from_str("isotropic") == DomainMode.ASPECT_PRESERVED
+    assert DomainMode.from_str("unit_square") == DomainMode.UNIT_SQUARE
+    assert DomainMode.from_str("square") == DomainMode.UNIT_SQUARE
+    assert DomainMode.from_str(DomainMode.UNIT_SQUARE) == DomainMode.UNIT_SQUARE
+
+
 def test_domain_invalid_args() -> None:
     with pytest.raises(ValueError):
         CoordinateDomain2D(width=0, height=10)
@@ -101,3 +112,22 @@ def test_domain_invalid_args() -> None:
         CoordinateDomain2D(width=10, height=10, x_min=1.0, x_max=0.0)
     with pytest.raises(ValueError):
         DomainMode.from_str("invalid_mode")
+
+
+def test_domain_nan_and_inf_to_discrete() -> None:
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        domain = CoordinateDomain2D(width=100, height=80)
+        # NaN coordinates must not raise warnings and must map to safe bounds [0, max_dim - 1]
+        i_nan, j_nan = domain.to_discrete(float("nan"), float("nan"))
+        assert 0 <= i_nan < 100
+        assert 0 <= j_nan < 80
+
+        # Array with inf and nan
+        x_edge = np.array([float("nan"), float("inf"), float("-inf"), 0.0])
+        y_edge = np.array([float("inf"), float("nan"), 0.0, float("-inf")])
+        i_arr, j_arr = domain.to_discrete(x_edge, y_edge)
+        assert np.all((i_arr >= 0) & (i_arr < 100))
+        assert np.all((j_arr >= 0) & (j_arr < 80))

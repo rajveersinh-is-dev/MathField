@@ -9,8 +9,6 @@ Zero lookup tables or direct raster memorization.
 
 from __future__ import annotations
 
-import copy
-import math
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -21,7 +19,6 @@ from mathfield.core.ast.nodes import (
     BinaryOpNode,
     ConstantNode,
     FunctionCallNode,
-    ParameterNode,
     UnaryOpNode,
     VariableNode,
 )
@@ -117,7 +114,7 @@ class EvolutionaryOptimizer:
             if not np.all(np.isfinite(diff)):
                 ind.mse = 1e6
             else:
-                ind.mse = float(np.mean(diff ** 2))
+                ind.mse = float(np.mean(diff**2))
         except Exception:
             ind.mse = 1e6
 
@@ -129,9 +126,11 @@ class EvolutionaryOptimizer:
         best = pop[indices[0]]
         for idx in indices[1:]:
             cand = pop[idx]
-            if cand.fitness < best.fitness:
-                best = cand
-            elif abs(cand.fitness - best.fitness) < 1e-9 and cand.complexity < best.complexity:
+            if (
+                cand.fitness < best.fitness
+                or abs(cand.fitness - best.fitness) < 1e-9
+                and cand.complexity < best.complexity
+            ):
                 best = cand
         return best
 
@@ -242,7 +241,7 @@ class EvolutionaryOptimizer:
         for gen in range(n_gens):
             # Elitism: retain top 2
             sorted_pop = sorted(population, key=lambda ind: ind.fitness)
-            next_pop = [sorted_pop[0], sorted_pop[1]]
+            next_pop = [sorted_pop[0], sorted_pop[1]] if len(sorted_pop) >= 2 else list(sorted_pop)
 
             while len(next_pop) < self.population_size:
                 p1 = self._tournament_select(population)

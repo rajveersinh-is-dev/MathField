@@ -6,7 +6,6 @@ Continuous-resolution raster image exporter (PNG with alpha channel, quality-sca
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 

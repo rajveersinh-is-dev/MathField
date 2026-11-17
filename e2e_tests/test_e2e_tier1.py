@@ -15,33 +15,24 @@ Methodology: Category-Partition Equivalence Classes:
 
 from __future__ import annotations
 
-import ast as py_ast
-import csv
-import io
 import json
 import math
-import os
 import re
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 import numpy as np
 import pytest
 from PIL import Image
 
 from e2e_tests.helpers import (
-    CliResult,
     assert_no_memorized_arrays,
-    compute_ciede2000,
-    compute_reference_mae,
-    compute_reference_max_error,
     compute_reference_mse,
     compute_reference_psnr,
     compute_reference_ssim,
-    inspect_checkpoint,
     inspect_csv_parameters,
     inspect_jpg,
     inspect_json_project,
@@ -51,14 +42,8 @@ from e2e_tests.helpers import (
     inspect_svg,
     run_cli,
     run_standalone_script,
-    validate_csv_parameter_table,
-    validate_json_project_file,
-    validate_latex_export,
-    validate_pdf_report,
-    validate_png_export,
     validate_reproducibility_package,
     validate_standalone_python_script,
-    validate_svg_export,
 )
 
 pytestmark = [pytest.mark.tier1]
@@ -68,6 +53,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # ==============================================================================
 # FEATURE 1: Mode A (Mathematical Discovery)
 # ==============================================================================
+
 
 class TestFeature01ModeA:
     """Feature 1: Mode A (Mathematical Discovery) - Pareto J(M) = E(M) + lambda C(M)"""
@@ -79,15 +65,22 @@ class TestFeature01ModeA:
             pytest.skip("cli.py is under active parallel development")
 
         out_low = e2e_temp_dir / "f01_low"
-        res = run_cli([
-            "--image", str(synth_rgb_poly),
-            "--output-dir", str(out_low),
-            "--mode", "discovery",
-            "--lambda-reg", "1e-5",
-            "--max-iter", "3",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_rgb_poly),
+                "--output-dir",
+                str(out_low),
+                "--mode",
+                "discovery",
+                "--lambda-reg",
+                "1e-5",
+                "--max-iter",
+                "3",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
         proj_file = out_low / "mathfield_out.mathfield"
         data = inspect_json_project(proj_file)
@@ -100,15 +93,22 @@ class TestFeature01ModeA:
             pytest.skip("cli.py is under active parallel development")
 
         out_high = e2e_temp_dir / "f01_high"
-        res = run_cli([
-            "--image", str(synth_rgb_poly),
-            "--output-dir", str(out_high),
-            "--mode", "discovery",
-            "--lambda-reg", "0.8",
-            "--max-iter", "3",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_rgb_poly),
+                "--output-dir",
+                str(out_high),
+                "--mode",
+                "discovery",
+                "--lambda-reg",
+                "0.8",
+                "--max-iter",
+                "3",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
         proj_file = out_high / "mathfield_out.mathfield"
         data = inspect_json_project(proj_file)
@@ -122,14 +122,20 @@ class TestFeature01ModeA:
             pytest.skip("cli.py is under active parallel development")
 
         out_dir = e2e_temp_dir / "f01_symbolic"
-        res = run_cli([
-            "--image", str(synth_rgb_poly),
-            "--output-dir", str(out_dir),
-            "--mode", "discovery",
-            "--max-iter", "2",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_rgb_poly),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "discovery",
+                "--max-iter",
+                "2",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
         proj = json.loads((out_dir / "mathfield_out.mathfield").read_text(encoding="utf-8"))
         model = proj.get("global_model") or proj.get("expressions", {})
@@ -138,7 +144,8 @@ class TestFeature01ModeA:
         assert_no_memorized_arrays(model)
 
         # In addition, verify that the discovered formula parses into a valid mathfield.core.ast.ASTNode
-        from mathfield.core.ast import parse as mf_parse, ASTNode
+        from mathfield.core.ast import ASTNode, parse as mf_parse
+
         formula = model.get("formula") if isinstance(model, dict) else str(model)
         if formula and isinstance(formula, str):
             ast_node = mf_parse(formula)
@@ -153,10 +160,14 @@ class TestFeature01ModeA:
         out1 = e2e_temp_dir / "f01_seed1"
         out2 = e2e_temp_dir / "f01_seed2"
         cmd = [
-            "--image", str(synth_rgb_poly),
-            "--mode", "discovery",
-            "--seed", "42",
-            "--max-iter", "2",
+            "--image",
+            str(synth_rgb_poly),
+            "--mode",
+            "discovery",
+            "--seed",
+            "42",
+            "--max-iter",
+            "2",
             "--export-json",
             "--quiet",
         ]
@@ -193,15 +204,22 @@ class TestFeature01ModeA:
             pytest.skip("cli.py is under active parallel development")
 
         out_dir = e2e_temp_dir / "f01_converge"
-        res = run_cli([
-            "--image", str(synth_rgb_poly),
-            "--output-dir", str(out_dir),
-            "--mode", "discovery",
-            "--max-iter", "3",
-            "--tolerance", "1e-4",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_rgb_poly),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "discovery",
+                "--max-iter",
+                "3",
+                "--tolerance",
+                "1e-4",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
 
         proj_file = out_dir / "mathfield_out.mathfield"
@@ -225,6 +243,7 @@ class TestFeature01ModeA:
 # FEATURE 2: Mode B (Maximum Fidelity)
 # ==============================================================================
 
+
 class TestFeature02ModeB:
     """Feature 2: Mode B (Maximum Fidelity) - Higher-order expansions and piecewise corrections"""
 
@@ -235,14 +254,20 @@ class TestFeature02ModeB:
             pytest.skip("cli.py is under active parallel development")
 
         out_dir = e2e_temp_dir / "f02_fidelity"
-        res = run_cli([
-            "--image", str(synth_harmonic),
-            "--output-dir", str(out_dir),
-            "--mode", "fidelity",
-            "--max-iter", "3",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_harmonic),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "fidelity",
+                "--max-iter",
+                "3",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
 
         proj_file = out_dir / "mathfield_out.mathfield"
@@ -261,15 +286,21 @@ class TestFeature02ModeB:
             pytest.skip("cli.py is under active parallel development")
 
         out_dir = e2e_temp_dir / "f02_dense"
-        res = run_cli([
-            "--image", str(synth_harmonic),
-            "--output-dir", str(out_dir),
-            "--mode", "fidelity",
-            "--max-iter", "2",
-            "--export-csv",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_harmonic),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "fidelity",
+                "--max-iter",
+                "2",
+                "--export-csv",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
 
         # Inspect parameter expansion density in project file
@@ -294,14 +325,20 @@ class TestFeature02ModeB:
             pytest.skip("cli.py is under active parallel development")
 
         out_dir = e2e_temp_dir / "f02_piecewise"
-        res = run_cli([
-            "--image", str(synth_checker),
-            "--output-dir", str(out_dir),
-            "--mode", "fidelity",
-            "--max-iter", "2",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_checker),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "fidelity",
+                "--max-iter",
+                "2",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
 
         proj_file = out_dir / "mathfield_out.mathfield"
@@ -321,14 +358,20 @@ class TestFeature02ModeB:
             pytest.skip("cli.py is under active parallel development")
 
         out_dir = e2e_temp_dir / "f02_condition"
-        res = run_cli([
-            "--image", str(synth_rbf),
-            "--output-dir", str(out_dir),
-            "--mode", "fidelity",
-            "--max-iter", "2",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_rbf),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "fidelity",
+                "--max-iter",
+                "2",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
 
         proj_file = out_dir / "mathfield_out.mathfield"
@@ -348,14 +391,20 @@ class TestFeature02ModeB:
             pytest.skip("cli.py is under active parallel development")
 
         out_dir = e2e_temp_dir / "f02_sharp"
-        res = run_cli([
-            "--image", str(synth_typography),
-            "--output-dir", str(out_dir),
-            "--mode", "fidelity",
-            "--max-iter", "2",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_typography),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "fidelity",
+                "--max-iter",
+                "2",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
 
         proj_file = out_dir / "mathfield_out.mathfield"
@@ -384,12 +433,14 @@ class TestFeature02ModeB:
 # FEATURE 3: Continuous 2D Coordinate Domain
 # ==============================================================================
 
+
 class TestFeature03Continuous2DCoordinateDomain:
     """Feature 3: Continuous 2D Coordinate Domain mapping (normalized & aspect-preserved)"""
 
     def _get_domain_module(self):
         try:
             from mathfield.core.domain import CoordinateDomain2D, DomainMode
+
             return CoordinateDomain2D, DomainMode
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.domain is under active development in Milestone M2")
@@ -452,12 +503,14 @@ class TestFeature03Continuous2DCoordinateDomain:
 # FEATURE 4: Stage 1 (Image Analysis)
 # ==============================================================================
 
+
 class TestFeature04Stage1ImageAnalysis:
     """Feature 4: Stage 1 (Image Analysis) - TV, entropy, 2D FFT spectral roll-off"""
 
     def _get_analyzer_module(self):
         try:
-            from mathfield.core.image_analysis import ImageAnalyzer, ImageAnalysisResult
+            from mathfield.core.image_analysis import ImageAnalysisResult, ImageAnalyzer
+
             return ImageAnalyzer, ImageAnalysisResult
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.image_analysis is under active development in Milestone M2")
@@ -515,16 +568,18 @@ class TestFeature04Stage1ImageAnalysis:
 # FEATURE 5: Stage 2 (Global Discovery)
 # ==============================================================================
 
+
 class TestFeature05Stage2GlobalDiscovery:
     """Feature 5: Stage 2 (Global Discovery) - Chebyshev, Fourier, splines, RBFs, rationals"""
 
     def _get_basis_modules(self):
         try:
-            from mathfield.core.basis.polynomial import Chebyshev2D
             from mathfield.core.basis.fourier import Fourier2D
-            from mathfield.core.basis.splines import BSplineSurface2D
-            from mathfield.core.basis.rbf import WendlandC2RBF
+            from mathfield.core.basis.polynomial import Chebyshev2D
             from mathfield.core.basis.rational import Rational2D
+            from mathfield.core.basis.rbf import WendlandC2RBF
+            from mathfield.core.basis.splines import BSplineSurface2D
+
             return Chebyshev2D, Fourier2D, BSplineSurface2D, WendlandC2RBF, Rational2D
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.basis is under active development in Milestone M2")
@@ -571,7 +626,7 @@ class TestFeature05Stage2GlobalDiscovery:
         np.testing.assert_allclose(vals, 1.0, atol=1e-12)
 
         # Invariant 3: Smooth quadratic reconstruction capability
-        target = 0.5 * (X ** 2 + Y ** 2)
+        target = 0.5 * (X**2 + Y**2)
         Phi = basis.basis_matrix(X, Y)
         c_opt = np.linalg.lstsq(Phi, target.ravel(), rcond=None)[0]
         fitted = basis.evaluate(X, Y, coefficients=c_opt)
@@ -607,14 +662,16 @@ class TestFeature05Stage2GlobalDiscovery:
 # FEATURE 6: Stage 3 (Local Decomposition)
 # ==============================================================================
 
+
 class TestFeature06Stage3LocalDecomposition:
     """Feature 6: Stage 3 (Local Decomposition) - Quadtree, Wendland partition of unity"""
 
     def _get_local_modules(self):
         try:
-            from mathfield.core.local.quadtree import QuadtreeDecomposition, QuadtreeNode
-            from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
             from mathfield.core.local.local_patch import LocalPatch
+            from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
+            from mathfield.core.local.quadtree import QuadtreeDecomposition, QuadtreeNode
+
             return QuadtreeDecomposition, QuadtreeNode, WendlandPartitionOfUnity, LocalPatch
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.local is under active development in Milestone M2")
@@ -639,7 +696,7 @@ class TestFeature06Stage3LocalDecomposition:
         # Verify Sobolev error metric: E = MSE + mu * ||grad R||^2
         sobolev_err = decomp.compute_sobolev_error(res_map)
         dy, dx = np.gradient(res_map)
-        expected_err = float(np.mean(res_map ** 2)) + 0.1 * float(np.mean(dx ** 2 + dy ** 2))
+        expected_err = float(np.mean(res_map**2)) + 0.1 * float(np.mean(dx**2 + dy**2))
         assert math.isclose(sobolev_err, expected_err, rel_tol=1e-9)
 
         # Decompose residual and verify root node properties
@@ -684,7 +741,7 @@ class TestFeature06Stage3LocalDecomposition:
         # Generate a test grid and local high-residual feature
         x = np.linspace(-1, 1, 32)
         X, Y = np.meshgrid(x, x)
-        R = np.exp(-5.0 * (X ** 2 + Y ** 2))
+        R = np.exp(-5.0 * (X**2 + Y**2))
 
         # Local patch domain mask
         u, v = patch.normalize_coordinates(X, Y)
@@ -692,7 +749,7 @@ class TestFeature06Stage3LocalDecomposition:
         res_before = float(np.mean(R[mask] ** 2))
 
         # Fit local patch on the residual using patch mask as weight
-        fit_err = patch.fit(R, X, Y, weights=mask.astype(float), reg_lambda=1e-6)
+        patch.fit(R, X, Y, weights=mask.astype(float), reg_lambda=1e-6)
         patch_eval = patch.evaluate(X, Y)
 
         # Residual after local patch correction
@@ -742,16 +799,24 @@ class TestFeature06Stage3LocalDecomposition:
 # FEATURE 7: Stage 4 (Joint Optimization)
 # ==============================================================================
 
+
 class TestFeature07Stage4JointOptimization:
     """Feature 7: Stage 4 (Joint Optimization) - VarPro, LM, L-BFGS-B, seeded genetic"""
 
     def _get_optimize_modules(self):
         try:
-            from mathfield.core.optimize.varpro import VarProOptimizer
-            from mathfield.core.optimize.solvers import LevenbergMarquardtOptimizer, LBFGSBOptimizer
-            from mathfield.core.optimize.evolutionary import EvolutionaryOptimizer
             from mathfield.core.optimize.conditioning import ConditionMonitor
-            return VarProOptimizer, LevenbergMarquardtOptimizer, LBFGSBOptimizer, EvolutionaryOptimizer, ConditionMonitor
+            from mathfield.core.optimize.evolutionary import EvolutionaryOptimizer
+            from mathfield.core.optimize.solvers import LBFGSBOptimizer, LevenbergMarquardtOptimizer
+            from mathfield.core.optimize.varpro import VarProOptimizer
+
+            return (
+                VarProOptimizer,
+                LevenbergMarquardtOptimizer,
+                LBFGSBOptimizer,
+                EvolutionaryOptimizer,
+                ConditionMonitor,
+            )
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.optimize is under active development in Milestone M2")
 
@@ -763,7 +828,7 @@ class TestFeature07Stage4JointOptimization:
 
         # Define separable problem y = c_0 * exp(-theta_0 * r^2) + c_1 * sin(theta_1 * x)
         def basis_fn(theta: np.ndarray, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
-            r2 = X ** 2 + Y ** 2
+            r2 = X**2 + Y**2
             phi0 = np.exp(-theta[0] * r2).ravel()
             phi1 = np.sin(theta[1] * X).ravel()
             return np.column_stack([phi0, phi1])
@@ -793,10 +858,7 @@ class TestFeature07Stage4JointOptimization:
             return np.array([10.0 * (x[1] - x[0] ** 2), 1.0 - x[0]])
 
         def jac_fn(x: np.ndarray) -> np.ndarray:
-            return np.array([
-                [-20.0 * x[0], 10.0],
-                [-1.0, 0.0]
-            ])
+            return np.array([[-20.0 * x[0], 10.0], [-1.0, 0.0]])
 
         x0 = np.array([-1.2, 1.0])
         cost_init = 0.5 * float(np.sum(res_fn(x0) ** 2))
@@ -868,14 +930,16 @@ class TestFeature07Stage4JointOptimization:
 # FEATURE 8: Stage 5 (Refinement & Verification)
 # ==============================================================================
 
+
 class TestFeature08Stage5RefinementVerification:
     """Feature 8: Stage 5 (Refinement & Verification) - BIC pruning, re-render parity"""
 
     def _get_verify_modules(self):
         try:
+            from mathfield.core.verify.metrics import compute_metrics
             from mathfield.core.verify.pruning import BICPruner
             from mathfield.core.verify.renderer import ReferenceRenderer
-            from mathfield.core.verify.metrics import compute_metrics
+
             return BICPruner, ReferenceRenderer, compute_metrics
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.verify is under active development in Milestone M2")
@@ -891,6 +955,7 @@ class TestFeature08Stage5RefinementVerification:
     def test_f08_02_refinement_algebraic_pass(self) -> None:
         """TC-F08-02: Algebraic simplification pass eliminates zero-terms."""
         from mathfield.core.ast import parse, simplify
+
         ast = parse("x * 0 + c0 * 1 + (y - y)")
         simplified = simplify(ast)
         assert "c0" in str(simplified)
@@ -934,12 +999,14 @@ class TestFeature08Stage5RefinementVerification:
 # FEATURE 9: Full-Colour & Alpha Support
 # ==============================================================================
 
+
 class TestFeature09FullColourAlphaSupport:
     """Feature 9: Full-Colour & Alpha Support - sRGB, Linear, HSV Cartesian, CIELAB"""
 
     def _get_color_module(self):
         try:
-            from mathfield.core.color import ColorSpaceConverter, ColorSpace
+            from mathfield.core.color import ColorSpace, ColorSpaceConverter
+
             return ColorSpaceConverter, ColorSpace
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.color is under active development in Milestone M2")
@@ -994,12 +1061,14 @@ class TestFeature09FullColourAlphaSupport:
 # FEATURE 10: Safe Expression Grammar & Pratt Parser
 # ==============================================================================
 
+
 class TestFeature10SafeExpressionGrammarParser:
     """Feature 10: Safe Expression Grammar & Pratt Parser - Absolute zero eval/exec sandbox"""
 
     def test_f10_01_parser_precedence_associativity(self) -> None:
         """TC-F10-01: Correct binding of operators: power > mul/div > add/sub."""
         from mathfield.core.ast import parse
+
         ast = parse("2 + 3 * x ^ 2 - 4 / y")
         # Top-level is subtraction
         assert ast.op == "-"
@@ -1011,29 +1080,35 @@ class TestFeature10SafeExpressionGrammarParser:
     def test_f10_02_parser_whitelisted_functions(self) -> None:
         """TC-F10-02: Parses approved mathematical functions."""
         from mathfield.core.ast import parse
+
         ast = parse("sin(x) + rbf_wendland(x, y)")
         assert ast.op == "+"
         assert ast.left.func == "sin"
         assert ast.right.func == "rbf_wendland"
         assert len(ast.right.args) == 2
 
-    @pytest.mark.parametrize("hostile_code", [
-        "__import__('os').system('dir')",
-        "eval('1 + 1')",
-        "exec('print(1)')",
-        "open('secret.txt', 'r')",
-        "lambda x: x + 1",
-        "import sys",
-    ])
+    @pytest.mark.parametrize(
+        "hostile_code",
+        [
+            "__import__('os').system('dir')",
+            "eval('1 + 1')",
+            "exec('print(1)')",
+            "open('secret.txt', 'r')",
+            "lambda x: x + 1",
+            "import sys",
+        ],
+    )
     def test_f10_03_parser_zero_eval_exec_sandbox(self, hostile_code: str) -> None:
         """TC-F10-03: Absolute sandbox: rejects any python code injection without executing."""
-        from mathfield.core.ast import parse, ParseError
+        from mathfield.core.ast import ParseError, parse
+
         with pytest.raises((ParseError, ValueError)):
             parse(hostile_code)
 
     def test_f10_04_parser_syntax_error_pointers(self) -> None:
         """TC-F10-04: Syntax errors provide line and column diagnostics."""
-        from mathfield.core.ast import parse, ParseError
+        from mathfield.core.ast import ParseError, parse
+
         with pytest.raises(ParseError) as exc_info:
             parse("2 * (x + ")
         err = exc_info.value
@@ -1043,6 +1118,7 @@ class TestFeature10SafeExpressionGrammarParser:
     def test_f10_05_parser_immutable_ast_nodes(self) -> None:
         """TC-F10-05: AST nodes are immutable frozen dataclasses."""
         from mathfield.core.ast import parse
+
         ast = parse("x + y")
         with pytest.raises((AttributeError, TypeError)):
             ast.op = "-"  # mutation forbidden
@@ -1052,12 +1128,14 @@ class TestFeature10SafeExpressionGrammarParser:
 # FEATURE 11: Numerical Domain Validation & Regularization
 # ==============================================================================
 
+
 class TestFeature11NumericalDomainValidation:
     """Feature 11: Numerical Domain Validation & Regularization - Pole prevention"""
 
     def test_f11_01_domain_regularized_division(self) -> None:
         """TC-F11-01: Division by zero evaluates to finite real value without crash."""
         from mathfield.core.ast.domain import regularized_div
+
         u = np.array([5.0, -3.0, 0.0])
         v = np.array([0.0, -0.0, 0.0])
         res = regularized_div(u, v)
@@ -1066,6 +1144,7 @@ class TestFeature11NumericalDomainValidation:
     def test_f11_02_domain_log_clamping(self) -> None:
         """TC-F11-02: Logarithm of non-positive numbers is clamped to finite real."""
         from mathfield.core.ast.domain import protected_log
+
         x = np.array([-10.0, 0.0, 1e-18, 1.0])
         res = protected_log(x)
         assert np.all(np.isfinite(res))
@@ -1074,6 +1153,7 @@ class TestFeature11NumericalDomainValidation:
     def test_f11_03_domain_exp_overflow_clamp(self) -> None:
         """TC-F11-03: Exponential explosion clamped to prevent float overflow."""
         from mathfield.core.ast.domain import protected_exp
+
         x = np.array([100.0, 1000.0, -500.0])
         res = protected_exp(x)
         assert np.all(np.isfinite(res))
@@ -1081,6 +1161,7 @@ class TestFeature11NumericalDomainValidation:
     def test_f11_04_domain_sqrt_non_negative(self) -> None:
         """TC-F11-04: Square root of negative number clamped to 0.0 (no complex or NaN)."""
         from mathfield.core.ast.domain import protected_sqrt
+
         x = np.array([-4.0, -100.0, 0.0, 16.0])
         res = protected_sqrt(x)
         assert np.all(np.isfinite(res))
@@ -1091,8 +1172,9 @@ class TestFeature11NumericalDomainValidation:
     def test_f11_05_domain_composite_grid_safety(self) -> None:
         """TC-F11-05: Evaluating composite expressions with multiple nested poles."""
         from mathfield.core.ast.domain import protected_log, protected_sqrt, regularized_div
+
         X, Y = np.meshgrid(np.linspace(-1, 1, 20), np.linspace(-1, 1, 20))
-        dist_sq = X ** 2 + Y ** 2
+        dist_sq = X**2 + Y**2
         r = protected_sqrt(dist_sq)
         log_r = protected_log(r)
         res = regularized_div(log_r, dist_sq)
@@ -1103,12 +1185,14 @@ class TestFeature11NumericalDomainValidation:
 # FEATURE 12: Symbolic Transformations & Derivatives
 # ==============================================================================
 
+
 class TestFeature12SymbolicTransformationsDerivatives:
     """Feature 12: Symbolic Transformations & Derivatives - Constant folding & analytical differentiation"""
 
     def test_f12_01_transform_constant_folding(self) -> None:
         """TC-F12-01: Constant subtrees fold to single numerical constants."""
         from mathfield.core.ast import parse, simplify
+
         ast = parse("2 * 3 + 4 * 5")
         folded = simplify(ast)
         assert str(folded) == "26"
@@ -1116,6 +1200,7 @@ class TestFeature12SymbolicTransformationsDerivatives:
     def test_f12_02_transform_algebraic_identities(self) -> None:
         """TC-F12-02: Algebraic identity reduction (x + 0 -> x, x * 1 -> x, x * 0 -> 0)."""
         from mathfield.core.ast import parse, simplify
+
         assert str(simplify(parse("x + 0"))) == "x"
         assert str(simplify(parse("x * 1"))) == "x"
         assert str(simplify(parse("x * 0"))) == "0"
@@ -1123,12 +1208,14 @@ class TestFeature12SymbolicTransformationsDerivatives:
     def test_f12_03_transform_polynomial_derivative(self) -> None:
         """TC-F12-03: Analytical derivative of polynomial w.r.t variable."""
         from mathfield.core.ast import diff, parse, simplify
+
         # d/dx (3 * x^2) = 6 * x
         ast = parse("3 * x ^ 2")
         d_dx = diff(ast, "x")
         simplified = simplify(d_dx)
         # Evaluated at x=2, derivative is 12
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
+
         val = evaluate_numpy(simplified, np.array([2.0]), np.array([0.0]), np.array([]))
         assert math.isclose(float(val[0]), 12.0, abs_tol=1e-12)
 
@@ -1153,6 +1240,7 @@ class TestFeature12SymbolicTransformationsDerivatives:
     def test_f12_05_transform_param_diff_parity(self) -> None:
         """TC-F12-05: Jacobian parameter derivative: d/dc0 (c0 * sin(x)) == sin(x)."""
         from mathfield.core.ast import diff, parse, simplify
+
         ast = parse("c0 * sin(x)")
         d_dc0 = diff(ast, "c0")
         assert "sin(x)" in str(simplify(d_dc0))
@@ -1161,6 +1249,7 @@ class TestFeature12SymbolicTransformationsDerivatives:
 # ==============================================================================
 # FEATURE 13: Multi-Tier Accelerated Evaluators
 # ==============================================================================
+
 
 class TestFeature13MultiTierAcceleratedEvaluators:
     """Feature 13: Multi-Tier Accelerated Evaluators - CPU SIMD, C++ DLL, CuPy CUDA parity"""
@@ -1187,6 +1276,7 @@ class TestFeature13MultiTierAcceleratedEvaluators:
 
         try:
             from mathfield.core.engine.cpu_native import evaluate_native, is_native_available
+
             if is_native_available():
                 native_res = evaluate_native(ast, X, Y, np.array([]))
                 np.testing.assert_allclose(native_res, ref, atol=1e-6)
@@ -1199,11 +1289,12 @@ class TestFeature13MultiTierAcceleratedEvaluators:
         """TC-F13-03: CuPy CUDA elementwise kernel parity (or graceful fallback)."""
         try:
             from mathfield.core.engine.gpu_cupy import (
-                is_cuda_available,
-                evaluate_cupy,
                 compute_residuals_cupy,
                 compute_sse_cupy,
+                evaluate_cupy,
+                is_cuda_available,
             )
+
             if not is_cuda_available():
                 pytest.skip("CUDA device not available; automatic CPU fallback applies")
         except (ImportError, Exception):
@@ -1241,6 +1332,7 @@ class TestFeature13MultiTierAcceleratedEvaluators:
         """TC-F13-04: Evaluator cascades gracefully to available CPU engine."""
         from mathfield.core.ast import parse
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
+
         ast = parse("x + y")
         X, Y = np.meshgrid(np.linspace(-1, 1, 10), np.linspace(-1, 1, 10))
         res = evaluate_numpy(ast, X, Y, np.array([]))
@@ -1266,6 +1358,7 @@ class TestFeature13MultiTierAcceleratedEvaluators:
 # ==============================================================================
 # FEATURE 14: Expression Code Generators
 # ==============================================================================
+
 
 class TestFeature14ExpressionCodeGenerators:
     """Feature 14: Expression Code Generators - AMS-LaTeX & Standalone NumPy Python"""
@@ -1337,12 +1430,14 @@ class TestFeature14ExpressionCodeGenerators:
 # FEATURE 15: 8K High-Resolution Tiling & Memory Management
 # ==============================================================================
 
+
 class TestFeature15HighResolution8KTiling:
     """Feature 15: 8K High-Resolution Tiling & Memory Management - Working set < 300MB"""
 
     def _get_tiler_module(self):
         try:
             from mathfield.core.engine.tiler import DomainChunker, TileInfo
+
             return DomainChunker, TileInfo
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.engine.tiler is under active development in Milestone M3")
@@ -1358,8 +1453,8 @@ class TestFeature15HighResolution8KTiling:
     def test_f15_02_tiler_boundary_seamlessness(self) -> None:
         """TC-F15-02: Seam values between adjacent tiles match continuous evaluation within 1e-12."""
         DomainChunker, _ = self._get_tiler_module()
-        from mathfield.core.domain import CoordinateDomain2D
         from mathfield.core.ast import parse
+        from mathfield.core.domain import CoordinateDomain2D
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
 
         width, height = 128, 128
@@ -1389,8 +1484,8 @@ class TestFeature15HighResolution8KTiling:
     def test_f15_03_tiler_memmap_streaming(self, e2e_temp_dir: Path) -> None:
         """TC-F15-03: Tiled generator streams directly into disk-backed numpy.memmap."""
         DomainChunker, _ = self._get_tiler_module()
-        from mathfield.core.domain import CoordinateDomain2D
         from mathfield.core.ast import parse
+        from mathfield.core.domain import CoordinateDomain2D
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
 
         width, height = 128, 128
@@ -1463,13 +1558,15 @@ class TestFeature15HighResolution8KTiling:
 # FEATURE 16: Robust Bit-Exact Job Checkpointing
 # ==============================================================================
 
+
 class TestFeature16BitExactJobCheckpointing:
     """Feature 16: Robust Bit-Exact Job Checkpointing - IEEE-754 hex float serialization"""
 
     def _get_checkpoint_module(self):
         try:
-            from mathfield.core.checkpoint.manager import CheckpointManager, CheckpointCorruptError
+            from mathfield.core.checkpoint.manager import CheckpointCorruptError, CheckpointManager
             from mathfield.core.checkpoint.serializer import CheckpointSerializer
+
             return CheckpointManager, CheckpointCorruptError, CheckpointSerializer
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.checkpoint is under active development in Milestone M3")
@@ -1533,12 +1630,14 @@ class TestFeature16BitExactJobCheckpointing:
 # FEATURE 17: Main UI Workspace
 # ==============================================================================
 
+
 class TestFeature17MainUIWorkspace:
     """Feature 17: Main UI Workspace - Drag-and-drop, zoom/pan, curtain split comparison"""
 
     def _get_workspace(self):
         try:
             from mathfield.ui.workspaces.main_workspace import MainWorkspace
+
             return MainWorkspace
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workspaces.main_workspace is under active development in Milestone M4")
@@ -1586,12 +1685,14 @@ class TestFeature17MainUIWorkspace:
 # FEATURE 18: Equation UI Workspace
 # ==============================================================================
 
+
 class TestFeature18EquationUIWorkspace:
     """Feature 18: Equation UI Workspace - Tree view, LaTeX formula card via mathtext"""
 
     def _get_workspace(self):
         try:
             from mathfield.ui.workspaces.equation_workspace import EquationWorkspace
+
             return EquationWorkspace
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workspaces.equation_workspace is under active development in Milestone M4")
@@ -1636,12 +1737,14 @@ class TestFeature18EquationUIWorkspace:
 # FEATURE 19: Region Analysis UI Workspace
 # ==============================================================================
 
+
 class TestFeature19RegionAnalysisUIWorkspace:
     """Feature 19: Region Analysis UI Workspace - Rubber-band ROI, 5 full-frame heatmaps"""
 
     def _get_workspace(self):
         try:
             from mathfield.ui.workspaces.region_workspace import RegionWorkspace
+
             return RegionWorkspace
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workspaces.region_workspace is under active development in Milestone M4")
@@ -1690,13 +1793,15 @@ class TestFeature19RegionAnalysisUIWorkspace:
 # FEATURE 20: Optimization UI Workspace
 # ==============================================================================
 
+
 class TestFeature20OptimizationUIWorkspace:
     """Feature 20: Optimization UI Workspace - pyqtgraph metric curves, telemetry, controls"""
 
     def _get_workspace(self):
         try:
-            from mathfield.ui.workspaces.optimization_workspace import OptimizationWorkspace
             from mathfield.ui.workers import OptimizationWorker
+            from mathfield.ui.workspaces.optimization_workspace import OptimizationWorkspace
+
             return OptimizationWorkspace, OptimizationWorker
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workspaces.optimization_workspace is under active development in Milestone M4")
@@ -1744,12 +1849,14 @@ class TestFeature20OptimizationUIWorkspace:
 # FEATURE 21: Research UI Workspace
 # ==============================================================================
 
+
 class TestFeature21ResearchUIWorkspace:
     """Feature 21: Research UI Workspace - Candidate log with rejection rationale, SVD spectra"""
 
     def _get_workspace(self):
         try:
             from mathfield.ui.workspaces.research_workspace import ResearchWorkspace
+
             return ResearchWorkspace
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workspaces.research_workspace is under active development in Milestone M4")
@@ -1805,12 +1912,14 @@ class TestFeature21ResearchUIWorkspace:
 # FEATURE 22: Non-Blocking Background Execution
 # ==============================================================================
 
+
 class TestFeature22NonBlockingBackgroundExecution:
     """Feature 22: Non-Blocking Background Execution - Dedicated worker thread & cooperative cancellation"""
 
     def _get_worker_module(self):
         try:
             from mathfield.ui.workers import OptimizationWorker, WorkerSignals
+
             return OptimizationWorker, WorkerSignals
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workers is under active development in Milestone M4")
@@ -1818,6 +1927,7 @@ class TestFeature22NonBlockingBackgroundExecution:
     def test_f22_01_worker_thread_isolation(self) -> None:
         """TC-F22-01: Background execution in distinct thread ID."""
         import threading
+
         OptimizationWorker, _ = self._get_worker_module()
 
         main_thread_id = threading.get_ident()
@@ -1872,7 +1982,6 @@ class TestFeature22NonBlockingBackgroundExecution:
 
     def test_f22_05_worker_clean_teardown(self) -> None:
         """TC-F22-05: Worker threads terminate cleanly without lingering locks."""
-        import threading
         OptimizationWorker, _ = self._get_worker_module()
 
         def persistent_loop():
@@ -1912,12 +2021,14 @@ class TestFeature22NonBlockingBackgroundExecution:
 # FEATURE 23: Image Exports (PNG & JPG)
 # ==============================================================================
 
+
 class TestFeature23ImageExports:
     """Feature 23: Image Exports - Continuous-res PNG with alpha, quality-controlled JPG"""
 
     def _get_raster_module(self):
         try:
-            from mathfield.export.raster import export_png, export_jpg
+            from mathfield.export.raster import export_jpg, export_png
+
             return export_png, export_jpg
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export.raster is under active development in Milestone M5")
@@ -1974,12 +2085,14 @@ class TestFeature23ImageExports:
 # FEATURE 24: Documented SVG Export
 # ==============================================================================
 
+
 class TestFeature24DocumentedSVGExport:
     """Feature 24: Documented SVG Export - Dual-mode (analytical vector + metadata XML fallback)"""
 
     def _get_svg_module(self):
         try:
             from mathfield.export.svg import export_svg
+
             return export_svg
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export.svg is under active development in Milestone M5")
@@ -2035,12 +2148,14 @@ class TestFeature24DocumentedSVGExport:
 # FEATURE 25: Standalone Python Reproduction Script
 # ==============================================================================
 
+
 class TestFeature25StandalonePythonReproductionScript:
     """Feature 25: Standalone Python Reproduction Script - Zero MathField dependencies"""
 
     def _get_python_export_module(self):
         try:
             from mathfield.export.python_script import export_standalone_script
+
             return export_standalone_script
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export.python_script is under active development in Milestone M5")
@@ -2075,17 +2190,12 @@ class TestFeature25StandalonePythonReproductionScript:
 
     def test_f25_04_repro_script_pixel_parity(self, e2e_temp_dir: Path) -> None:
         """TC-F25-04: Pixel output matches analytical function to numerical MSE < 1.0."""
-        from e2e_tests.helpers import compute_reference_mse
         export_standalone_script = self._get_python_export_module()
         script_path = e2e_temp_dir / "parity_test.py"
         # Bivariate analytical model: R(x,y) = 0.5 * (sin(pi * x) * cos(pi * y) + 1.0)
         sample_model = {
             "coordinate_domain": {"x_min": -1.0, "x_max": 1.0, "y_min": -1.0, "y_max": 1.0},
-            "expressions": {
-                "R": "0.5 * (sin(pi * x) * cos(pi * y) + 1.0)",
-                "G": "0.5 * (x + 1.0)",
-                "B": "0.0"
-            }
+            "expressions": {"R": "0.5 * (sin(pi * x) * cos(pi * y) + 1.0)", "G": "0.5 * (x + 1.0)", "B": "0.0"},
         }
         export_standalone_script(sample_model, script_path)
         out_img = e2e_temp_dir / "parity_out.png"
@@ -2132,6 +2242,7 @@ class TestFeature25StandalonePythonReproductionScript:
 # FEATURE 26: Standalone LaTeX & PDF Report
 # ==============================================================================
 
+
 class TestFeature26StandaloneLaTeXPDFReport:
     """Feature 26: Standalone LaTeX & PDF Report - ReportLab 5.0.1 zero-dependency PDF"""
 
@@ -2139,6 +2250,7 @@ class TestFeature26StandaloneLaTeXPDFReport:
         try:
             from mathfield.export.latex_report import export_latex_report
             from mathfield.export.pdf_report import export_pdf_report
+
             return export_latex_report, export_pdf_report
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export latex/pdf reports are under active development in Milestone M5")
@@ -2176,10 +2288,7 @@ class TestFeature26StandaloneLaTeXPDFReport:
         """TC-F26-04: PDF binary magic bytes (%PDF-), page count >= 1, and valid structure."""
         _, export_pdf_report = self._get_latex_pdf_modules()
         pdf_path = e2e_temp_dir / "magic_report.pdf"
-        sample_result = {
-            "expressions": {"formula": "0.5 * x^2 + 0.1"},
-            "metrics": {"mse": 0.0005, "psnr": 33.01}
-        }
+        sample_result = {"expressions": {"formula": "0.5 * x^2 + 0.1"}, "metrics": {"mse": 0.0005, "psnr": 33.01}}
         export_pdf_report(sample_result, pdf_path)
         assert pdf_path.exists()
         raw_bytes = pdf_path.read_bytes()
@@ -2201,7 +2310,7 @@ class TestFeature26StandaloneLaTeXPDFReport:
             "metrics": {"mse": 0.002, "psnr": 27.0},
             "original_image": preview_arr,
             "reconstructed_image": preview_arr,
-            "error_heatmap": preview_arr
+            "error_heatmap": preview_arr,
         }
         export_pdf_report(sample_result, pdf_path)
         info = inspect_pdf_report(pdf_path)
@@ -2217,13 +2326,7 @@ class TestFeature26StandaloneLaTeXPDFReport:
 DRAFT07_PROJECT_SCHEMA: Dict[str, Any] = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "required": [
-        "schema_version",
-        "coordinate_domain",
-        "color_space",
-        "global_model",
-        "final_metrics"
-    ],
+    "required": ["schema_version", "coordinate_domain", "color_space", "global_model", "final_metrics"],
     "properties": {
         "schema_version": {"type": "string"},
         "project_name": {"type": "string"},
@@ -2237,8 +2340,8 @@ DRAFT07_PROJECT_SCHEMA: Dict[str, Any] = {
                 "y_max": {"type": "number"},
                 "pixel_width": {"type": "integer"},
                 "pixel_height": {"type": "integer"},
-                "aspect_ratio": {"type": "number"}
-            }
+                "aspect_ratio": {"type": "number"},
+            },
         },
         "color_space": {"type": "string", "enum": ["RGB", "RGBA", "HSV", "CIELAB", "LinearRGB"]},
         "mode": {"type": "string"},
@@ -2254,11 +2357,11 @@ DRAFT07_PROJECT_SCHEMA: Dict[str, Any] = {
                         "properties": {
                             "channel": {"type": "string"},
                             "formula": {"type": "string"},
-                            "parameters": {"type": "array"}
-                        }
-                    }
+                            "parameters": {"type": "array"},
+                        },
+                    },
                 }
-            }
+            },
         },
         "local_patches": {"type": "array"},
         "final_metrics": {
@@ -2268,11 +2371,11 @@ DRAFT07_PROJECT_SCHEMA: Dict[str, Any] = {
                 "mse": {"type": "number"},
                 "psnr": {"type": "number"},
                 "ssim": {"type": "number"},
-                "complexity": {"type": "number"}
-            }
+                "complexity": {"type": "number"},
+            },
         },
-        "random_seed": {"type": ["integer", "null"]}
-    }
+        "random_seed": {"type": ["integer", "null"]},
+    },
 }
 
 
@@ -2282,7 +2385,8 @@ class TestFeature27CSVDataJSONProjectFormat:
     def _get_project_csv_modules(self):
         try:
             from mathfield.export.csv_export import export_csv_parameters
-            from mathfield.export.project_file import save_project, load_project, ProjectFileError
+            from mathfield.export.project_file import ProjectFileError, load_project, save_project
+
             return export_csv_parameters, save_project, load_project, ProjectFileError
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export csv/project is under active development in Milestone M5")
@@ -2338,12 +2442,14 @@ class TestFeature27CSVDataJSONProjectFormat:
 # FEATURE 28: Standalone Reproducibility Package Bundle
 # ==============================================================================
 
+
 class TestFeature28StandaloneReproducibilityPackageBundle:
     """Feature 28: Standalone Reproducibility Package Bundle - Complete self-contained package"""
 
     def _get_bundle_module(self):
         try:
             from mathfield.export.bundle import export_bundle
+
             return export_bundle
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export.bundle is under active development in Milestone M5")
@@ -2401,6 +2507,7 @@ class TestFeature28StandaloneReproducibilityPackageBundle:
 # FEATURE 29: Automated Test Suite Integration
 # ==============================================================================
 
+
 class TestFeature29AutomatedTestSuiteIntegration:
     """Feature 29: Automated Test Suite Integration - Core test suite execution"""
 
@@ -2415,6 +2522,7 @@ class TestFeature29AutomatedTestSuiteIntegration:
             capture_output=True,
             text=True,
             timeout=30.0,
+            check=False,
         )
         assert res.returncode == 0, f"Pytest collection failed with code {res.returncode}:\n{res.stderr}\n{res.stdout}"
 
@@ -2427,6 +2535,7 @@ class TestFeature29AutomatedTestSuiteIntegration:
     def test_f29_02_unit_test_core_ast_execution(self) -> None:
         """TC-F29-02: Core AST module passes basic invariant checks."""
         from mathfield.core.ast import ConstantNode, VariableNode, parse
+
         node = parse("x + 1")
         assert isinstance(node.left, VariableNode)
         assert isinstance(node.right, ConstantNode)
@@ -2435,6 +2544,7 @@ class TestFeature29AutomatedTestSuiteIntegration:
         """TC-F29-03: Vectorized CPU engine evaluates correctly."""
         from mathfield.core.ast import parse
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
+
         ast = parse("x * y")
         X, Y = np.meshgrid(np.array([1.0, 2.0]), np.array([3.0, 4.0]))
         res = evaluate_numpy(ast, X, Y, np.array([]))
@@ -2442,15 +2552,10 @@ class TestFeature29AutomatedTestSuiteIntegration:
 
     def test_f29_04_unit_test_pipeline_execution(self) -> None:
         """TC-F29-04: Test infrastructure helpers integrate with pipeline evaluation and verify metrics."""
-        from mathfield.core.domain import CoordinateDomain2D
         from mathfield.core.ast import parse
+        from mathfield.core.domain import CoordinateDomain2D
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
         from mathfield.core.verify.metrics import compute_mse, compute_psnr, compute_ssim
-        from e2e_tests.helpers import (
-            compute_reference_mse,
-            compute_reference_psnr,
-            compute_reference_ssim,
-        )
 
         domain = CoordinateDomain2D(width=32, height=32)
         X, Y = domain.to_discrete_grid()
@@ -2489,6 +2594,7 @@ class TestFeature29AutomatedTestSuiteIntegration:
                 capture_output=True,
                 text=True,
                 timeout=30.0,
+                check=False,
             )
             assert res.returncode == 0, f"Headless UI discovery failed: {res.stderr}\n{res.stdout}"
         except subprocess.TimeoutExpired:
@@ -2499,14 +2605,16 @@ class TestFeature29AutomatedTestSuiteIntegration:
 # FEATURE 30: Empirical Benchmarking Harness
 # ==============================================================================
 
+
 class TestFeature30EmpiricalBenchmarkingHarness:
     """Feature 30: Empirical Benchmarking Harness - Performance counters, zero fabricated scores"""
 
     def _get_benchmarks_module(self):
         try:
-            import benchmarks.baselines as baselines_mod
             import benchmarks.ablations as ablations_mod
+            import benchmarks.baselines as baselines_mod
             import benchmarks.run_benchmarks as run_benchmarks_mod
+
             return baselines_mod, ablations_mod, run_benchmarks_mod
         except (ImportError, ModuleNotFoundError):
             pytest.skip("benchmarks package is under active development in Milestone M6")
@@ -2514,7 +2622,9 @@ class TestFeature30EmpiricalBenchmarkingHarness:
     def test_f30_01_benchmark_baselines_suite(self) -> None:
         """TC-F30-01: 5 baselines defined (Chebyshev, Fourier, wavelets, splines, RBF)."""
         baselines_mod, _, _ = self._get_benchmarks_module()
-        names = baselines_mod.list_baselines() if hasattr(baselines_mod, "list_baselines") else baselines_mod.BASELINE_NAMES
+        names = (
+            baselines_mod.list_baselines() if hasattr(baselines_mod, "list_baselines") else baselines_mod.BASELINE_NAMES
+        )
         expected = {"chebyshev", "fourier", "wavelets", "splines", "rbf"}
         assert set(names) == expected
 
@@ -2538,7 +2648,9 @@ class TestFeature30EmpiricalBenchmarkingHarness:
     def test_f30_04_benchmark_ablation_studies(self) -> None:
         """TC-F30-04: 4 ablation studies specified."""
         _, ablations_mod, _ = self._get_benchmarks_module()
-        names = ablations_mod.list_ablations() if hasattr(ablations_mod, "list_ablations") else ablations_mod.ABLATION_NAMES
+        names = (
+            ablations_mod.list_ablations() if hasattr(ablations_mod, "list_ablations") else ablations_mod.ABLATION_NAMES
+        )
         expected = {"no_quadtree", "no_bic_pruning", "no_varpro", "no_color_decoupling"}
         assert set(names) == expected
 
@@ -2564,6 +2676,7 @@ class TestFeature30EmpiricalBenchmarkingHarness:
 # ==============================================================================
 # FEATURE 31: Technical Paper Draft & Documentation
 # ==============================================================================
+
 
 class TestFeature31TechnicalPaperDocumentation:
     """Feature 31: Technical Paper Draft & Documentation - Publication-grade paper & README"""

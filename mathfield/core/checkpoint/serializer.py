@@ -9,10 +9,9 @@ and pipeline context checkpointing.
 
 from __future__ import annotations
 
-import math
 import platform
 import time
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -57,9 +56,7 @@ class CheckpointSerializer:
         }
 
     @classmethod
-    def serialize_parameters(
-        cls, params: Union[Dict[str, Any], np.ndarray, Sequence[float]]
-    ) -> Dict[str, Any]:
+    def serialize_parameters(cls, params: Union[Dict[str, Any], np.ndarray, Sequence[float]]) -> Dict[str, Any]:
         """
         Serialize parameter collection (dict, array, or sequence) to named hex parameter entries.
         Guarantees shape and dtype preservation for ndarrays.
@@ -104,9 +101,7 @@ class CheckpointSerializer:
             raise TypeError(f"Unsupported parameter container type: {type(params)}")
 
     @classmethod
-    def deserialize_parameters(
-        cls, data: Dict[str, Any]
-    ) -> np.ndarray:
+    def deserialize_parameters(cls, data: Dict[str, Any]) -> np.ndarray:
         """
         Deserialize parameters structure back to an exact numpy ndarray.
         """
@@ -127,7 +122,7 @@ class CheckpointSerializer:
                 return (0, int(k[1:]))
             return (1, k)
 
-        param_keys = [k for k in data.keys() if not k.startswith("__") and k not in ("shape", "dtype", "decimal", "hex")]
+        param_keys = [k for k in data if not k.startswith("__") and k not in ("shape", "dtype", "decimal", "hex")]
         param_keys.sort(key=key_sort)
 
         values = []
@@ -145,9 +140,7 @@ class CheckpointSerializer:
         return np.array(values, dtype=np.float64)
 
     @classmethod
-    def serialize_rng_state(
-        cls, rng_or_state: Union[np.random.Generator, Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def serialize_rng_state(cls, rng_or_state: Union[np.random.Generator, Dict[str, Any]]) -> Dict[str, Any]:
         """
         Recursively serialize a NumPy BitGenerator state dictionary into JSON-serializable types.
         Converts all internal NumPy ndarrays (counters, keys, buffers) into typed dict structures.
@@ -183,6 +176,7 @@ class CheckpointSerializer:
         Deserialize state dictionary and reconstruct an active np.random.Generator
         with identical internal bit generator sequence state across PCG64, Philox, SFC64, MT19937.
         """
+
         def _decode_obj(obj: Any) -> Any:
             if isinstance(obj, dict):
                 if obj.get("__ndarray__") is True:
@@ -231,6 +225,7 @@ class CheckpointSerializer:
         }
         try:
             import psutil
+
             process = psutil.Process()
             telemetry["cpu_percent"] = psutil.cpu_percent(interval=None)
             telemetry["process_ram_rss_mb"] = round(process.memory_info().rss / (1024.0 * 1024.0), 2)
@@ -240,6 +235,7 @@ class CheckpointSerializer:
 
         try:
             import cupy
+
             if cupy.cuda.is_available():
                 props = cupy.cuda.runtime.getDeviceProperties(0)
                 mem_info = cupy.cuda.runtime.memGetInfo()

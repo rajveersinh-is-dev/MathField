@@ -6,12 +6,13 @@ Guarantees absolute security with zero use of eval, exec, or ast.literal_eval.
 from __future__ import annotations
 
 from typing import List, Optional, Tuple
+
 from mathfield.core.ast.nodes import (
+    FUNCTION_ARITIES,
     ASTNode,
     BinaryOpNode,
     ConstantNode,
     FunctionCallNode,
-    FUNCTION_ARITIES,
     ParameterNode,
     UnaryOpNode,
     VariableNode,
@@ -23,6 +24,7 @@ class ParseError(ValueError):
     """
     Exception raised when expression parsing fails, with detailed source context.
     """
+
     def __init__(
         self,
         message: str,
@@ -40,12 +42,7 @@ class ParseError(ValueError):
         lines = source_text.splitlines() if source_text else []
         line_str = lines[self.line - 1] if 0 <= self.line - 1 < len(lines) else ""
         pointer = " " * max(0, self.column - 1) + "^"
-        formatted = (
-            f"ParseError at line {self.line}, column {self.column}:\n"
-            f"  {line_str}\n"
-            f"  {pointer}\n"
-            f"{message}"
-        )
+        formatted = f"ParseError at line {self.line}, column {self.column}:\n  {line_str}\n  {pointer}\n{message}"
         super().__init__(formatted)
 
 
@@ -182,7 +179,7 @@ class Parser:
         # 2. Parenthesized expressions
         elif token.type == TokenType.LPAREN:
             inner_expr = self.parse_expression(0)
-            self.expect(TokenType.RPAREN, f"Unmatched '(' - missing closing ')'")
+            self.expect(TokenType.RPAREN, "Unmatched '(' - missing closing ')'")
             return inner_expr
 
         # 3. Unary operators (+, -)
@@ -254,4 +251,3 @@ class PrattParser:
 
     def parse(self, source_text: str) -> ASTNode:
         return parse(source_text, insert_implicit_mul=self.insert_implicit_mul)
-

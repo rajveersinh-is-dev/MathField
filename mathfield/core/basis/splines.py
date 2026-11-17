@@ -8,7 +8,7 @@ mathfield/core/basis/splines.py
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import numpy as np
 
@@ -16,6 +16,7 @@ from mathfield.core.ast.nodes import (
     ASTNode,
     BinaryOpNode,
     ConstantNode,
+    FunctionCallNode,
     ParameterNode,
     VariableNode,
 )
@@ -162,6 +163,8 @@ class BSplineSurface2D(BasisFunction2D):
         For general B-splines, control points are represented as parameters.
         """
         c = self._coefficients if coefficients is None else np.asarray(coefficients, dtype=np.float64).ravel()
+        if len(c) < self.num_terms:
+            raise ValueError(f"Coefficients length {len(c)} is less than required basis terms {self.num_terms}")
         term_nodes: List[ASTNode] = []
 
         var_x = VariableNode("x")
@@ -172,13 +175,34 @@ class BSplineSurface2D(BasisFunction2D):
             for j in range(self.ny):
                 coeff_val = float(c[col])
                 if abs(coeff_val) >= prune_threshold or symbolic_params:
-                    p_node: ASTNode = ParameterNode(f"c{param_offset + col}", param_offset + col) if symbolic_params else ConstantNode(coeff_val)
+                    p_node: ASTNode = (
+                        ParameterNode(f"c{param_offset + col}", param_offset + col)
+                        if symbolic_params
+                        else ConstantNode(coeff_val)
+                    )
                     # Use center of support as representative Gaussian-like localized basis
                     x_c = 0.5 * (self.knots_x[i] + self.knots_x[min(i + self.degree + 1, len(self.knots_x) - 1)])
                     y_c = 0.5 * (self.knots_y[j] + self.knots_y[min(j + self.degree + 1, len(self.knots_y) - 1)])
                     dx = BinaryOpNode("-", var_x, ConstantNode(x_c))
                     dy = BinaryOpNode("-", var_y, ConstantNode(y_c))
-                    term_ast = BinaryOpNode("*", p_node, FunctionCallNode("exp", (BinaryOpNode("*", ConstantNode(-2.0), BinaryOpNode("+", BinaryOpNode("^", dx, ConstantNode(2.0)), BinaryOpNode("^", dy, ConstantNode(2.0)))),)))
+                    term_ast = BinaryOpNode(
+                        "*",
+                        p_node,
+                        FunctionCallNode(
+                            "exp",
+                            (
+                                BinaryOpNode(
+                                    "*",
+                                    ConstantNode(-2.0),
+                                    BinaryOpNode(
+                                        "+",
+                                        BinaryOpNode("^", dx, ConstantNode(2.0)),
+                                        BinaryOpNode("^", dy, ConstantNode(2.0)),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    )
                     term_nodes.append(term_ast)
                 col += 1
 

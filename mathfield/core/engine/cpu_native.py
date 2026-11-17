@@ -8,10 +8,9 @@ from __future__ import annotations
 import ctypes
 import os
 import subprocess
-import sys
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional
+
 import numpy as np
 
 from mathfield.core.ast.nodes import (
@@ -27,13 +26,12 @@ from mathfield.core.ast.nodes import (
 
 class NativeKernelNotAvailableError(RuntimeError):
     """Raised when native C++ kernel DLL is requested but unavailable."""
-    pass
 
 
 class BytecodeProgram(NamedTuple):
-    opcodes: np.ndarray      # uint32
-    operands: np.ndarray     # int32
-    const_pool: np.ndarray   # float64
+    opcodes: np.ndarray  # uint32
+    operands: np.ndarray  # int32
+    const_pool: np.ndarray  # float64
     max_stack_depth: int = 0
 
 
@@ -95,41 +93,71 @@ def compile_bytecode(node: ASTNode) -> BytecodeProgram:
             traverse(curr.left)
             traverse(curr.right)
             op = curr.op
-            if op == "+": emit(5, 0)
-            elif op == "-": emit(6, 0)
-            elif op == "*": emit(7, 0)
-            elif op == "/": emit(8, 0)
-            elif op in ("^", "**"): emit(9, 0)
-            elif op == "%": emit(10, 0)
+            if op == "+":
+                emit(5, 0)
+            elif op == "-":
+                emit(6, 0)
+            elif op == "*":
+                emit(7, 0)
+            elif op == "/":
+                emit(8, 0)
+            elif op in ("^", "**"):
+                emit(9, 0)
+            elif op == "%":
+                emit(10, 0)
 
         elif isinstance(curr, FunctionCallNode):
             for arg in curr.args:
                 traverse(arg)
             f = curr.func
-            if f == "sin": emit(13, 0)
-            elif f == "cos": emit(14, 0)
-            elif f == "tan": emit(15, 0)
-            elif f == "sinc": emit(16, 0)
-            elif f == "asin": emit(17, 0)
-            elif f == "acos": emit(18, 0)
-            elif f == "atan": emit(19, 0)
-            elif f == "exp": emit(20, 0)
-            elif f == "log": emit(21, 0)
-            elif f == "sqrt": emit(22, 0)
-            elif f == "cbrt": emit(23, 0)
-            elif f == "square": emit(24, 0)
-            elif f == "abs": emit(25, 0)
-            elif f == "sign": emit(26, 0)
-            elif f == "sigmoid": emit(27, 0)
-            elif f == "rbf_wendland": emit(28, 0)
-            elif f == "rbf_gaussian": emit(29, 0)
-            elif f == "rbf_multiquadric": emit(30, 0)
-            elif f == "softplus": emit(31, 0)
-            elif f == "clamp": emit(32, 0)
-            elif f == "sinh": emit(33, 0)
-            elif f == "cosh": emit(34, 0)
-            elif f == "tanh": emit(35, 0)
-            elif f == "pow": emit(9, 0)
+            if f == "sin":
+                emit(13, 0)
+            elif f == "cos":
+                emit(14, 0)
+            elif f == "tan":
+                emit(15, 0)
+            elif f == "sinc":
+                emit(16, 0)
+            elif f == "asin":
+                emit(17, 0)
+            elif f == "acos":
+                emit(18, 0)
+            elif f == "atan":
+                emit(19, 0)
+            elif f == "exp":
+                emit(20, 0)
+            elif f == "log":
+                emit(21, 0)
+            elif f == "sqrt":
+                emit(22, 0)
+            elif f == "cbrt":
+                emit(23, 0)
+            elif f == "square":
+                emit(24, 0)
+            elif f == "abs":
+                emit(25, 0)
+            elif f == "sign":
+                emit(26, 0)
+            elif f == "sigmoid":
+                emit(27, 0)
+            elif f == "rbf_wendland":
+                emit(28, 0)
+            elif f == "rbf_gaussian":
+                emit(29, 0)
+            elif f == "rbf_multiquadric":
+                emit(30, 0)
+            elif f == "softplus":
+                emit(31, 0)
+            elif f == "clamp":
+                emit(32, 0)
+            elif f == "sinh":
+                emit(33, 0)
+            elif f == "cosh":
+                emit(34, 0)
+            elif f == "tanh":
+                emit(35, 0)
+            elif f == "pow":
+                emit(9, 0)
 
     traverse(node)
     emit(36, 0)  # RET
@@ -146,6 +174,7 @@ class NativeKernelManager:
     """
     Singleton manager providing ctypes bindings to mathfield_kernels.dll.
     """
+
     _instance: Optional[NativeKernelManager] = None
 
     def __init__(self) -> None:
@@ -172,6 +201,7 @@ class NativeKernelManager:
         current_dir = Path(__file__).parent.resolve()
         candidate_paths.append(current_dir / "mathfield_kernels.dll")
         candidate_paths.append(current_dir / "libmathfield_kernels.so")
+        candidate_paths.append(current_dir / "libmathfield_kernels.dylib")
 
         # 3. native/build/Release directory
         root_dir = current_dir.parent.parent.parent.resolve()
@@ -262,7 +292,7 @@ def build_native_dll(force: bool = False) -> bool:
             f'cl /std:c++17 /O2 /fp:precise /W4 /MD /openmp /LD "{cpp_source}" /Fe"{target_dll}"'
         )
         try:
-            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=str(engine_dir))
+            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=str(engine_dir), check=False)
             if res.returncode == 0 and target_dll.is_file():
                 mgr = NativeKernelManager.get_instance()
                 mgr._load_dll()
@@ -328,6 +358,7 @@ def evaluate_native(
         raise ValueError(f"Coordinate arrays X and Y must have identical shapes, got {X.shape} and {Y.shape}")
 
     from mathfield.core.ast.nodes import validate_parameter_bounds
+
     validate_parameter_bounds(node, params)
 
     from mathfield.core.engine.cpu_numpy import evaluate_numpy

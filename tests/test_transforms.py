@@ -4,13 +4,11 @@ Verifies analytical derivatives against central finite differences.
 """
 
 import math
+
 import numpy as np
-import pytest
 
 from mathfield.core.ast.nodes import (
-    ASTNode,
     ConstantNode,
-    ParameterNode,
     VariableNode,
 )
 from mathfield.core.ast.parser import parse
@@ -142,4 +140,3 @@ def test_coordinate_differentiation_and_anti_blowup():
         curr = diff(curr, "x")
     assert isinstance(curr, ConstantNode)
     assert curr.value == 24.0
-

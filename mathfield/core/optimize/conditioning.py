@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict
 
 import numpy as np
 
@@ -17,6 +17,7 @@ import numpy as np
 @dataclass(frozen=True, slots=True)
 class ConditionReport:
     """Quantitative matrix conditioning diagnostic report."""
+
     condition_number: float
     max_singular_value: float
     min_singular_value: float
@@ -80,7 +81,7 @@ class ConditionMonitor:
         rank = int(np.sum(s > 1e-14 * max(s_max, 1e-12)))
 
         # Recommended Tikhonov damping to cap kappa <= 1e8
-        rec_lambda = max(1e-12 * (s_max ** 2), (s_max / 1e8) ** 2)
+        rec_lambda = max(1e-12 * (s_max**2), (s_max / 1e8) ** 2)
 
         return {
             "condition_number": cond,

@@ -15,9 +15,6 @@ import numpy as np
 
 from mathfield.core.ast.nodes import (
     ASTNode,
-    BinaryOpNode,
-    ConstantNode,
-    VariableNode,
 )
 from mathfield.core.basis.base import BasisFunction2D
 from mathfield.core.basis.polynomial import Chebyshev2D
@@ -28,6 +25,7 @@ class LocalPatch:
     """
     Representation of a localized continuous approximation patch.
     """
+
     bounds: Tuple[float, float, float, float] = (-1.0, -1.0, 1.0, 1.0)  # (xmin, ymin, xmax, ymax)
     basis: Optional[BasisFunction2D] = None
     coefficients: Optional[np.ndarray] = None
@@ -175,7 +173,11 @@ class LocalPatch:
         """
         cx, cy = self.center
         hx, hy = self.half_widths
-        coeffs = self.coefficients[:, 0] if (self.coefficients is not None and self.coefficients.ndim == 2) else self.coefficients
+        coeffs = (
+            self.coefficients[:, 0]
+            if (self.coefficients is not None and self.coefficients.ndim == 2)
+            else self.coefficients
+        )
         base_ast = self.basis.to_ast(
             coefficients=coeffs,
             param_offset=param_offset,

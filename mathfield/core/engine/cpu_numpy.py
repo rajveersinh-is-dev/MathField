@@ -6,7 +6,8 @@ Uses recursive closure composition with zero use of eval() or exec().
 from __future__ import annotations
 
 import functools
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict
+
 import numpy as np
 
 from mathfield.core.ast.domain import (
@@ -199,6 +200,7 @@ def evaluate_numpy(
     Evaluates an AST expression on coordinate grids X, Y with parameters using NumPy.
     """
     from mathfield.core.ast.nodes import validate_parameter_bounds
+
     validate_parameter_bounds(node, params)
     fn = compile_numpy(node)
     return fn(X, Y, params)

@@ -6,6 +6,7 @@ Emits clean, mathematically accurate LaTeX parseable by matplotlib.mathtext.
 from __future__ import annotations
 
 import re
+
 from mathfield.core.ast.nodes import (
     ASTNode,
     BinaryOpNode,
@@ -87,7 +88,6 @@ def _node_to_latex(node: ASTNode) -> str:
         left, right = node.left, node.right
         l_prec = _get_precedence(left)
         r_prec = _get_precedence(right)
-        my_prec = _get_precedence(node)
 
         # 1. Fractions
         if op == "/":

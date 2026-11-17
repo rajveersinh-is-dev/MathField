@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 
@@ -68,6 +68,7 @@ def get_ablation_config(ablation_name: str) -> Dict[str, Any]:
 @dataclass(frozen=True, slots=True)
 class AblationResult:
     """Quantitative performance and error measurement for an architectural ablation."""
+
     name: str
     mse: float
     psnr: float

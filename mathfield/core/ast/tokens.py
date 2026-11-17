@@ -8,39 +8,40 @@ import math
 import re
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, List, Optional
+from typing import Any, List
 
 
 class TokenType(Enum):
     """Enumeration of all lexical token types in MathField expressions."""
+
     # Literals
-    NUMBER = auto()        # e.g. 42, 3.14159, 1e-4, .5
+    NUMBER = auto()  # e.g. 42, 3.14159, 1e-4, .5
 
     # Mathematical Constants
-    CONSTANT = auto()      # pi, e
+    CONSTANT = auto()  # pi, e
 
     # Coordinates & Parameters
-    VARIABLE = auto()      # x, y, u, v
-    PARAMETER = auto()     # c0..cN, theta0..thetaN, p0..pN
+    VARIABLE = auto()  # x, y, u, v
+    PARAMETER = auto()  # c0..cN, theta0..thetaN, p0..pN
 
     # Operators
-    PLUS = auto()          # +
-    MINUS = auto()         # -
-    STAR = auto()          # *
-    SLASH = auto()         # /
-    CARET = auto()         # ^ or **
-    PERCENT = auto()       # %
+    PLUS = auto()  # +
+    MINUS = auto()  # -
+    STAR = auto()  # *
+    SLASH = auto()  # /
+    CARET = auto()  # ^ or **
+    PERCENT = auto()  # %
 
     # Delimiters
-    LPAREN = auto()        # (
-    RPAREN = auto()        # )
-    COMMA = auto()         # ,
+    LPAREN = auto()  # (
+    RPAREN = auto()  # )
+    COMMA = auto()  # ,
 
     # Identifiers (for whitelisted functions)
-    IDENTIFIER = auto()    # sin, cos, rbf_gaussian, etc.
+    IDENTIFIER = auto()  # sin, cos, rbf_gaussian, etc.
 
     # Control
-    EOF = auto()           # End of expression
+    EOF = auto()  # End of expression
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +49,7 @@ class Token:
     """
     Immutable representation of a lexical token with source position tracking.
     """
+
     type: TokenType
     value: Any
     raw_str: str
@@ -61,6 +63,7 @@ class Token:
 
 class LexerError(ValueError):
     """Exception raised when lexical scanning encounters invalid input."""
+
     def __init__(self, message: str, line: int, column: int, source_text: str = ""):
         self.message = message
         self.line = line
@@ -70,12 +73,7 @@ class LexerError(ValueError):
         lines = source_text.splitlines() if source_text else []
         line_str = lines[line - 1] if 0 <= line - 1 < len(lines) else ""
         pointer = " " * max(0, column - 1) + "^"
-        formatted = (
-            f"LexerError at line {line}, column {column}:\n"
-            f"  {line_str}\n"
-            f"  {pointer}\n"
-            f"{message}"
-        )
+        formatted = f"LexerError at line {line}, column {column}:\n  {line_str}\n  {pointer}\n{message}"
         super().__init__(formatted)
 
 
@@ -101,15 +99,15 @@ _VARIABLES = {"x", "y", "u", "v"}
 def tokenize(source_text: str, insert_implicit_mul: bool = True) -> List[Token]:
     """
     Scans the source mathematical expression text into a list of Tokens.
-    
+
     Parameters:
         source_text: Input string expression.
         insert_implicit_mul: Whether to insert implicit multiplication tokens
                              between adjacent factors (e.g. '2x' -> '2 * x').
-                             
+
     Returns:
         List of Token instances ending with TokenType.EOF.
-        
+
     Raises:
         LexerError: If invalid characters or malformed tokens are encountered.
     """
@@ -123,51 +121,69 @@ def tokenize(source_text: str, insert_implicit_mul: bool = True) -> List[Token]:
         ch = source_text[idx]
 
         # Handle whitespace and line counting
-        if ch == '\n':
+        if ch == "\n":
             line += 1
             col = 1
             idx += 1
             continue
-        elif ch in (' ', '\t', '\r'):
+        elif ch in (" ", "\t", "\r"):
             col += 1
             idx += 1
             continue
 
         # Two-character operators: **
-        if ch == '*' and idx + 1 < length and source_text[idx + 1] == '*':
+        if ch == "*" and idx + 1 < length and source_text[idx + 1] == "*":
             tokens.append(Token(TokenType.CARET, "^", "**", line, col, 2))
             idx += 2
             col += 2
             continue
 
         # Single-character operators and delimiters
-        if ch == '+':
+        if ch == "+":
             tokens.append(Token(TokenType.PLUS, "+", "+", line, col, 1))
-            idx += 1; col += 1; continue
-        elif ch == '-':
+            idx += 1
+            col += 1
+            continue
+        elif ch == "-":
             tokens.append(Token(TokenType.MINUS, "-", "-", line, col, 1))
-            idx += 1; col += 1; continue
-        elif ch == '*':
+            idx += 1
+            col += 1
+            continue
+        elif ch == "*":
             tokens.append(Token(TokenType.STAR, "*", "*", line, col, 1))
-            idx += 1; col += 1; continue
-        elif ch == '/':
+            idx += 1
+            col += 1
+            continue
+        elif ch == "/":
             tokens.append(Token(TokenType.SLASH, "/", "/", line, col, 1))
-            idx += 1; col += 1; continue
-        elif ch == '^':
+            idx += 1
+            col += 1
+            continue
+        elif ch == "^":
             tokens.append(Token(TokenType.CARET, "^", "^", line, col, 1))
-            idx += 1; col += 1; continue
-        elif ch == '%':
+            idx += 1
+            col += 1
+            continue
+        elif ch == "%":
             tokens.append(Token(TokenType.PERCENT, "%", "%", line, col, 1))
-            idx += 1; col += 1; continue
-        elif ch == '(':
+            idx += 1
+            col += 1
+            continue
+        elif ch == "(":
             tokens.append(Token(TokenType.LPAREN, "(", "(", line, col, 1))
-            idx += 1; col += 1; continue
-        elif ch == ')':
+            idx += 1
+            col += 1
+            continue
+        elif ch == ")":
             tokens.append(Token(TokenType.RPAREN, ")", ")", line, col, 1))
-            idx += 1; col += 1; continue
-        elif ch == ',':
+            idx += 1
+            col += 1
+            continue
+        elif ch == ",":
             tokens.append(Token(TokenType.COMMA, ",", ",", line, col, 1))
-            idx += 1; col += 1; continue
+            idx += 1
+            col += 1
+            continue
 
         # Numbers
         remainder = source_text[idx:]
@@ -202,14 +218,7 @@ def tokenize(source_text: str, insert_implicit_mul: bool = True) -> List[Token]:
                 if param_match:
                     prefix, index_str = param_match.groups()
                     param_index = int(index_str)
-                    tokens.append(Token(
-                        TokenType.PARAMETER,
-                        (ident_lower, param_index),
-                        ident_str,
-                        line,
-                        col,
-                        tok_len
-                    ))
+                    tokens.append(Token(TokenType.PARAMETER, (ident_lower, param_index), ident_str, line, col, tok_len))
                 else:
                     # Generic identifier (function name)
                     tokens.append(Token(TokenType.IDENTIFIER, ident_lower, ident_str, line, col, tok_len))
@@ -219,12 +228,7 @@ def tokenize(source_text: str, insert_implicit_mul: bool = True) -> List[Token]:
             continue
 
         # If we reached here, unrecognized character
-        raise LexerError(
-            f"Invalid character {ch!r}",
-            line=line,
-            column=col,
-            source_text=source_text
-        )
+        raise LexerError(f"Invalid character {ch!r}", line=line, column=col, source_text=source_text)
 
     # Append EOF token
     tokens.append(Token(TokenType.EOF, None, "", line, col, 0))
@@ -273,14 +277,7 @@ def _insert_implicit_multiplication(tokens: List[Token], source_text: str) -> Li
 
         if _can_end_atom(cur) and _can_start_atom(nxt):
             star_col = cur.column + cur.length
-            implicit_star = Token(
-                TokenType.STAR,
-                "*",
-                "*",
-                line=cur.line,
-                column=star_col,
-                length=0
-            )
+            implicit_star = Token(TokenType.STAR, "*", "*", line=cur.line, column=star_col, length=0)
             result.append(implicit_star)
 
     result.append(tokens[-1])  # Append EOF

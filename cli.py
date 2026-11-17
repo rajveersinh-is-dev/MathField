@@ -10,8 +10,6 @@ comprehensive export generation, seed control, and test automation hooks.
 from __future__ import annotations
 
 import argparse
-import json
-import math
 import sys
 import time
 from pathlib import Path
@@ -26,7 +24,6 @@ from mathfield.export.csv_export import export_csv_parameters
 from mathfield.export.latex_report import export_latex_report
 from mathfield.export.pdf_report import export_pdf_report
 from mathfield.export.project_file import save_project
-from mathfield.export.python_script import export_standalone_script
 from mathfield.export.raster import export_jpg, export_png
 from mathfield.export.svg import export_svg
 
@@ -207,8 +204,13 @@ def main(argv: List[str] | None = None) -> int:
             channels_list.append({"channel": "RGB", "formula": formula_str, "parameters": [1.0]})
         else:
             deg = global_model.get("degree", 6)
-            num_terms = int(global_model.get("basis_terms_count", (deg + 1) * (deg + 2) // 2))
-            params_vec = [float(np.sin(i * 0.1)) for i in range(num_terms)]
+            if "coefficients" in global_model and global_model["coefficients"] is not None:
+                actual = np.asarray(global_model["coefficients"])
+                flat_coeffs = actual[:, 0] if actual.ndim == 2 else actual.ravel()
+                params_vec = [float(x) for x in flat_coeffs]
+            else:
+                num_terms = int(global_model.get("basis_terms_count", (deg + 1) * (deg + 2) // 2))
+                params_vec = [0.0 for _ in range(num_terms)]
             channels_list.append(
                 {
                     "channel": "RGB",
@@ -221,16 +223,35 @@ def main(argv: List[str] | None = None) -> int:
     # Collect parameters for CSV export
     parameters_dict: Dict[str, Any] = {}
     if is_mode_a:
-        parameters_dict["c0"] = {"stage": "global", "channel": "RGB", "value": 1.0}
+        sym_ast = global_model.get("symbolic_ast")
+        if sym_ast is not None and hasattr(sym_ast, "parameters"):
+            ast_params = sym_ast.parameters()
+            if ast_params:
+                for p_name in ast_params:
+                    parameters_dict[p_name] = {"stage": "global", "channel": "RGB", "value": 1.0}
+            else:
+                parameters_dict["c0"] = {"stage": "global", "channel": "RGB", "value": 1.0}
+        else:
+            parameters_dict["c0"] = {"stage": "global", "channel": "RGB", "value": 1.0}
     else:
-        deg = global_model.get("degree", 6)
-        num_terms = int(global_model.get("basis_terms_count", (deg + 1) * (deg + 2) // 2))
-        for i in range(num_terms):
-            parameters_dict[f"c{i}"] = {
-                "stage": "global",
-                "channel": "RGB",
-                "value": float(np.sin(i * 0.1) * 0.5),
-            }
+        if "coefficients" in global_model and global_model["coefficients"] is not None:
+            actual = np.asarray(global_model["coefficients"])
+            flat_coeffs = actual[:, 0] if actual.ndim == 2 else actual.ravel()
+            for i, val in enumerate(flat_coeffs):
+                parameters_dict[f"c{i}"] = {
+                    "stage": "global",
+                    "channel": "RGB",
+                    "value": float(val),
+                }
+        else:
+            deg = global_model.get("degree", 6)
+            num_terms = int(global_model.get("basis_terms_count", (deg + 1) * (deg + 2) // 2))
+            for i in range(num_terms):
+                parameters_dict[f"c{i}"] = {
+                    "stage": "global",
+                    "channel": "RGB",
+                    "value": 0.0,
+                }
 
     # Format local decomposition
     local_decomp_data: Dict[str, Any] = {}
@@ -238,17 +259,12 @@ def main(argv: List[str] | None = None) -> int:
     if context.local_decomposition:
         leaves_cnt = context.local_decomposition.get("leaves_count", 0)
         local_decomp_data["leaves_count"] = leaves_cnt
-        local_decomp_data["patches"] = [
-            {"patch_id": i, "bounds": [-0.5, -0.5, 0.5, 0.5]}
-            for i in range(leaves_cnt)
-        ]
+        local_decomp_data["patches"] = [{"patch_id": i, "bounds": [-0.5, -0.5, 0.5, 0.5]} for i in range(leaves_cnt)]
         local_patches_list = local_decomp_data["patches"]
     elif not is_mode_a:
         # Mode B default local decomposition
         local_decomp_data["leaves_count"] = 4
-        local_decomp_data["patches"] = [
-            {"patch_id": i, "bounds": [-1.0, -1.0, 1.0, 1.0]} for i in range(4)
-        ]
+        local_decomp_data["patches"] = [{"patch_id": i, "bounds": [-1.0, -1.0, 1.0, 1.0]} for i in range(4)]
         local_patches_list = local_decomp_data["patches"]
 
     proj_dict: Dict[str, Any] = {
@@ -291,9 +307,9 @@ def main(argv: List[str] | None = None) -> int:
             "R": global_model.get("formula", "sin(x)"),
             "G": global_model.get("formula", "cos(y)"),
             "B": "0.0",
-        } if is_mode_a else {
-            "formula": "sin(x) + cos(y)"
-        },
+        }
+        if is_mode_a
+        else {"formula": "sin(x) + cos(y)"},
         "parameters": parameters_dict,
         "metrics": metrics,
         "rendered_image": context.rendered_image,
@@ -320,6 +336,7 @@ def main(argv: List[str] | None = None) -> int:
 
     if args.export_bundle:
         from mathfield.export.bundle import export_bundle
+
         export_bundle(export_result, out_dir / "bundle")
 
     if not args.quiet:

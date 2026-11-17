@@ -15,7 +15,7 @@ import numpy as np
 from mathfield.core.domain import CoordinateDomain2D, DomainMode
 from mathfield.core.pipeline.mode_a import ModeAPipeline
 from mathfield.core.pipeline.mode_b import ModeBPipeline
-from mathfield.core.pipeline.stage import PipelineContext, StageStatus
+from mathfield.core.pipeline.stage import PipelineContext
 
 
 class ReconstructionController:
@@ -75,7 +75,7 @@ class ReconstructionController:
             if on_candidate and self.context.global_model:
                 on_candidate(self.context.global_model)
 
-        status = pipeline.execute(self.context, progress_callback=stage_callback)
+        pipeline.execute(self.context, progress_callback=stage_callback)
 
         if on_finished:
             on_finished(self.context)

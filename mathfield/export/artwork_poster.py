@@ -14,9 +14,10 @@ or margin overflow across arbitrary canvas resolutions.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import matplotlib
+
 matplotlib.use("Agg")  # Non-interactive backend
 import matplotlib.pyplot as plt
 import numpy as np
@@ -41,25 +42,103 @@ def generate_math_panel(
     fig.patch.set_facecolor("white")
 
     domain = result.get("coordinate_domain", {})
-    pw = domain.get("pixel_width", 236)
-    ph = domain.get("pixel_height", 354)
+    pw = domain.get("pixel_width") or domain.get("width")
+    ph = domain.get("pixel_height") or domain.get("height")
+    if pw is None or ph is None:
+        recon_data = result.get("reconstructed_image") or result.get("rendered_image")
+        if isinstance(recon_data, np.ndarray):
+            ph, pw = recon_data.shape[:2]
+        elif isinstance(recon_data, Image.Image):
+            pw, ph = recon_data.size
+        else:
+            pw, ph = 256, 256
+
+    global_eqs = result.get("global_equations") or {}
+    patch_eqs = result.get("patch_equations") or []
+    expressions = result.get("expressions") or {}
+
+    if global_eqs and "R" in global_eqs:
+        g_r_text = rf"$G_R(x, y) = {global_eqs['R']}$"
+        g_gb_text = rf"$G_G(x, y) = {global_eqs.get('G', '')}, \quad G_B(x, y) = {global_eqs.get('B', '')}$"
+    elif expressions and "R" in expressions:
+        g_r_text = rf"$R(x, y) = {expressions['R']}$"
+        g_gb_text = rf"$G(x, y) = {expressions.get('G', '')}, \quad B(x, y) = {expressions.get('B', '')}$"
+    else:
+        g_r_text = r"$G_R(x, y) = \sum a_{i,j,R} T_i(x) T_j(y) + \sum b_{\mathbf{k},R} \cos(\mathbf{k} \cdot \mathbf{x}) + \dots$"
+        g_gb_text = r"$G_G(x, y) = \sum a_{i,j,G} T_i(x) T_j(y) + \dots, \quad G_B(x, y) = \sum a_{i,j,B} T_i(x) T_j(y) + \dots$"
+
+    if patch_eqs:
+        p0 = patch_eqs[0]
+        p0_id = p0.get("id", "L_1")
+        p0_form = p0.get("formula", "")
+        patch_line_1 = rf"${p0_id}(u, v) = {p0_form}$"
+        if len(patch_eqs) > 1:
+            p1 = patch_eqs[1]
+            p1_id = p1.get("id", "L_2")
+            p1_form = p1.get("formula", "")
+            patch_line_2 = rf"${p1_id}(u, v) = {p1_form} \quad [\mathrm{{total~patches:}}~{len(patch_eqs)}]$"
+        else:
+            patch_line_2 = rf"$\mathrm{{Total~active~local~patches:}}~{len(patch_eqs)}$"
+    else:
+        patch_line_1 = r"$L_{k,c}(u, v) = \sum_{p,q} c_{k,p,q,c} \alpha_p \alpha_q \cos(p \pi u) \cos(q \pi v) + \dots$"
+        patch_line_2 = r"$w_k(x, y) = \psi_4\left(\frac{|x - c_{x,k}|}{R_{x,k}}\right) \psi_4\left(\frac{|y - c_{y,k}|}{R_{y,k}}\right), \quad \psi_4(r) = (1 - r)_+^4 (4r + 1)$"
 
     # 13 structured mathematical clauses defining the artwork
     spec_lines: List[Tuple[float, str, float, bool]] = [
         # (y_relative, text, base_fontsize, is_bold)
         (0.94, title, 12.0, True),
-        (0.89, f"The above picture is a converted version of a {pw} × {ph} image. For m = 1, 2, ..., {pw} and n = 1, 2, ..., {ph},", 7.2, False),
-        (0.84, r"the color of pixel of row $n$ and column $m$ is rgb$\left(F(R(x, y)), F(G(x, y)), F(B(x, y))\right)$, where", 7.2, False),
-        (0.79, rf"$x = \frac{{2m - {pw + 1}}}{{{ph}}}, \quad y = \frac{{{ph + 1} - 2n}}{{{ph}}}, \quad F(u) = \left\lfloor 255 \cdot \max(0, \min(1, u)) \right\rfloor, \quad \mathrm{{and}}$", 7.2, False),
-        (0.71, r"$F_c(x, y) = G_c(x, y) + \frac{\sum_{k=1}^K w_k(x, y) \cdot L_{k,c}(x, y)}{\sum_{k=1}^K w_k(x, y)}, \quad \mathrm{for} \quad c \in \{R, G, B\}, \quad \mathrm{and}$", 7.0, False),
-        (0.63, r"$G_c(x, y) = \sum_{i+j \leq 6} a_{i,j,c} T_i(x) T_j(y) + \sum_{k_x, k_y} \left[ b_{k_x,k_y,c} \cos(k_x \pi x + k_y \pi y) + d_{k_x,k_y,c} \sin(k_x \pi x + k_y \pi y) \right],$", 6.8, False),
-        (0.55, r"$w_k(x, y) = \psi_4\left(\frac{|x - c_{x,k}|}{R_{x,k}}\right) \psi_4\left(\frac{|y - c_{y,k}|}{R_{y,k}}\right), \quad \psi_4(r) = (1 - r)_+^4 (4r + 1), \quad (R_{x,k}, R_{y,k}) = 1.20 \cdot (h_{x,k}, h_{y,k}),$", 6.5, False),
-        (0.47, r"$L_{k,c}(x, y) = \sum_{p=0}^P \sum_{q=0}^Q c_{k,p,q,c} \cdot \alpha_p \alpha_q \cos\left(p \pi u_k\right) \cos\left(q \pi v_k\right), \quad \alpha_0 = 1, \; \alpha_{p>0} = \sqrt{2},$", 6.5, False),
-        (0.39, r"$T_0(u) = 1, \quad T_1(u) = u, \quad T_{d+1}(u) = 2u T_d(u) - T_{d-1}(u), \quad u_k = \frac{x - x_{k,0}}{x_{k,1} - x_{k,0}}, \quad v_k = \frac{y - y_{k,0}}{y_{k,1} - y_{k,0}},$", 6.5, False),
-        (0.31, r"$G_R(x, y) = 22.782 T_1(x)T_2(y) - 16.474 T_2(x)T_2(y) - 16.363 T_1(x) - 15.347 T_3(x) + 10.216 \sin(\pi x - \pi y) + \dots$", 6.5, False),
-        (0.23, r"$G_G(x, y) = 22.951 T_1(x)T_2(y) - 16.796 T_1(x) + \dots, \quad G_B(x, y) = 22.935 T_1(x)T_2(y) - 16.221 T_2(x)T_2(y) + \dots$", 6.5, False),
-        (0.15, r"$L_{107}(x, y) = 0.284 \cos(7\pi u)\cos(3\pi v) + 0.239 \cos(8\pi u)\cos(3\pi v) + 0.185 \cos(7\pi u)\cos(2\pi v) - 0.181 \cos(\pi v) + \dots$", 6.5, False),
-        (0.07, r"$L_{58}(x, y) = 0.216 \cos(7\pi u)\cos(\pi v) - 0.205 + \dots, \quad L_{237}(x, y) = -0.299 \cos(\pi v) + 0.082 \cos(3\pi v) + \dots$", 6.5, False),
+        (
+            0.89,
+            f"The above picture is a converted version of a {pw} × {ph} image. For m = 1, 2, ..., {pw} and n = 1, 2, ..., {ph},",
+            7.2,
+            False,
+        ),
+        (
+            0.84,
+            r"the color of pixel of row $n$ and column $m$ is rgb$\left(F(R(x, y)), F(G(x, y)), F(B(x, y))\right)$, where",
+            7.2,
+            False,
+        ),
+        (
+            0.79,
+            rf"$x = \frac{{2m - {pw + 1}}}{{{ph}}}, \quad y = \frac{{{ph + 1} - 2n}}{{{ph}}}, \quad F(u) = \left\lfloor 255 \cdot \max(0, \min(1, u)) \right\rfloor, \quad \mathrm{{and}}$",
+            7.2,
+            False,
+        ),
+        (
+            0.71,
+            r"$F_c(x, y) = G_c(x, y) + \frac{\sum_{k=1}^K w_k(x, y) \cdot L_{k,c}(x, y)}{\sum_{k=1}^K w_k(x, y)}, \quad \mathrm{for} \quad c \in \{R, G, B\}, \quad \mathrm{and}$",
+            7.0,
+            False,
+        ),
+        (
+            0.63,
+            r"$G_c(x, y) = \sum_{i+j \leq 6} a_{i,j,c} T_i(x) T_j(y) + \sum_{k_x, k_y} \left[ b_{k_x,k_y,c} \cos(k_x \pi x + k_y \pi y) + d_{k_x,k_y,c} \sin(k_x \pi x + k_y \pi y) \right],$",
+            6.8,
+            False,
+        ),
+        (
+            0.55,
+            r"$w_k(x, y) = \psi_4\left(\frac{|x - c_{x,k}|}{R_{x,k}}\right) \psi_4\left(\frac{|y - c_{y,k}|}{R_{y,k}}\right), \quad \psi_4(r) = (1 - r)_+^4 (4r + 1), \quad (R_{x,k}, R_{y,k}) = 1.20 \cdot (h_{x,k}, h_{y,k}),$",
+            6.5,
+            False,
+        ),
+        (
+            0.47,
+            r"$L_{k,c}(x, y) = \sum_{p=0}^P \sum_{q=0}^Q c_{k,p,q,c} \cdot \alpha_p \alpha_q \cos\left(p \pi u_k\right) \cos\left(q \pi v_k\right), \quad \alpha_0 = 1, \; \alpha_{p>0} = \sqrt{2},$",
+            6.5,
+            False,
+        ),
+        (
+            0.39,
+            r"$T_0(u) = 1, \quad T_1(u) = u, \quad T_{d+1}(u) = 2u T_d(u) - T_{d-1}(u), \quad u_k = \frac{x - x_{k,0}}{x_{k,1} - x_{k,0}}, \quad v_k = \frac{y - y_{k,0}}{y_{k,1} - y_{k,0}},$",
+            6.5,
+            False,
+        ),
+        (0.31, g_r_text, 6.5, False),
+        (0.23, g_gb_text, 6.5, False),
+        (0.15, patch_line_1, 6.5, False),
+        (0.07, patch_line_2, 6.5, False),
     ]
 
     renderer = fig.canvas.get_renderer()

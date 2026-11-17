@@ -8,7 +8,7 @@ independent verification against target rasters, and discrepancy detection.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
 
@@ -16,7 +16,7 @@ from mathfield.core.ast.nodes import ASTNode
 from mathfield.core.color import ColorSpace, ColorSpaceConverter
 from mathfield.core.domain import CoordinateDomain2D
 from mathfield.core.engine.cpu_numpy import evaluate_numpy
-from mathfield.core.verify.metrics import compute_metrics, compute_mse
+from mathfield.core.verify.metrics import compute_metrics
 
 
 class ReferenceRenderer:
@@ -51,8 +51,9 @@ class ReferenceRenderer:
         if hard_clamp:
             raw = ColorSpaceConverter.hard_clamp(raw)
 
-        if color_space != ColorSpace.SRGB:
-            raw = ColorSpaceConverter.convert(raw, src_space=color_space, dst_space=ColorSpace.SRGB)
+        cs = ColorSpace.from_str(color_space)
+        if cs != ColorSpace.SRGB:
+            raw = ColorSpaceConverter.convert(raw, src_space=cs, dst_space=ColorSpace.SRGB)
 
         return raw
 

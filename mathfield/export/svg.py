@@ -10,10 +10,7 @@ import base64
 import io
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
-
-import numpy as np
-from PIL import Image
+from typing import Any, Union
 
 from mathfield.export.raster import _model_to_image
 
@@ -108,7 +105,7 @@ def export_svg(
         num_isolines = 8
         for i in range(num_isolines):
             y_pos = int((i + 1) * h / (num_isolines + 1))
-            path_d = f"M 0 {y_pos} Q {w // 2} {y_pos + 10 * (-1)**i} {w} {y_pos}"
+            path_d = f"M 0 {y_pos} Q {w // 2} {y_pos + 10 * (-1) ** i} {w} {y_pos}"
             ET.SubElement(
                 svg_elem,
                 "path",

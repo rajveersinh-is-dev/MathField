@@ -5,10 +5,10 @@ Unit test suite for mathfield.core.color (ColorSpaceConverter, ColorSpace).
 """
 
 import math
-import numpy as np
-import pytest
 
-from mathfield.core.color import ColorSpaceConverter, ColorSpace
+import numpy as np
+
+from mathfield.core.color import ColorSpace, ColorSpaceConverter
 
 
 def test_srgb_linear_roundtrip() -> None:
@@ -42,12 +42,14 @@ def test_cartesian_hsv_roundtrip() -> None:
 
 
 def test_cielab_roundtrip_and_dark_derivatives() -> None:
-    srgb = np.array([
-        [0.0, 0.0, 0.0],
-        [0.5, 0.25, 0.75],
-        [1.0, 1.0, 1.0],
-        [0.01, 0.02, 0.005],  # in linear toe region
-    ])
+    srgb = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.5, 0.25, 0.75],
+            [1.0, 1.0, 1.0],
+            [0.01, 0.02, 0.005],  # in linear toe region
+        ]
+    )
     lab = ColorSpaceConverter.srgb_to_cielab(srgb)
     rec = ColorSpaceConverter.cielab_to_srgb(lab)
     np.testing.assert_allclose(srgb, rec, atol=1e-3)
@@ -97,3 +99,10 @@ def test_color_space_converter_hub() -> None:
     hsv = ColorSpaceConverter.convert(lab, ColorSpace.CIELAB, ColorSpace.HSV)
     rgb_rec = ColorSpaceConverter.convert(hsv, ColorSpace.HSV, ColorSpace.SRGB)
     np.testing.assert_allclose(rgb, rgb_rec, atol=1e-2)
+
+
+def test_alpha_weighted_loss_empty_array() -> None:
+    """Validates that empty inputs to alpha_weighted_loss return 0.0 with no warnings."""
+    res = ColorSpaceConverter.alpha_weighted_loss(np.array([]), np.array([]), np.array([]))
+    assert res == 0.0
+

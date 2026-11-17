@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.obj
+*.exp
+*.lib
+
+# C/C++ build artifacts
+native/build/
+build/
+dist/
+*.egg-info/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Output directories & caches
+output/
+out_*/
+*.mathfield.bak
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.venv
+env/
+venv/

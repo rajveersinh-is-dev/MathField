@@ -140,21 +140,21 @@ def test_domain_protection_edge_cases():
     params = np.array([0.0, 1000.0, -100.0, -5.0])
 
     edge_cases = [
-        "1 / 0",                      # Division by constant zero
-        "x / y",                      # Division with zeros in coordinate grid
-        "0 / 0",                      # Indeterminate division
-        "log(0)",                     # Log of zero
-        "log(y)",                     # Log of negative/zero values
-        "exp(c1)",                    # Exponential of 1000 (overflow prevention)
-        "exp(c2)",                    # Exponential of -100 (underflow prevention)
-        "sqrt(c3)",                   # Square root of -5 (negative square root)
-        "sqrt(x)",                    # Square root of negative coordinates
-        "tan(pi / 2)",                # Tangent pole
-        "asin(2.0)",                  # Asin out of [-1, 1]
-        "acos(-2.0)",                 # Acos out of [-1, 1]
-        "c3 ^ 0.5",                   # Negative base with fractional power
-        "0 ^ 0",                      # Zero to the zero power
-        "0 ^ (-2)",                   # Zero to negative power
+        "1 / 0",  # Division by constant zero
+        "x / y",  # Division with zeros in coordinate grid
+        "0 / 0",  # Indeterminate division
+        "log(0)",  # Log of zero
+        "log(y)",  # Log of negative/zero values
+        "exp(c1)",  # Exponential of 1000 (overflow prevention)
+        "exp(c2)",  # Exponential of -100 (underflow prevention)
+        "sqrt(c3)",  # Square root of -5 (negative square root)
+        "sqrt(x)",  # Square root of negative coordinates
+        "tan(pi / 2)",  # Tangent pole
+        "asin(2.0)",  # Asin out of [-1, 1]
+        "acos(-2.0)",  # Acos out of [-1, 1]
+        "c3 ^ 0.5",  # Negative base with fractional power
+        "0 ^ 0",  # Zero to the zero power
+        "0 ^ (-2)",  # Zero to negative power
     ]
 
     for expr in edge_cases:
@@ -361,3 +361,19 @@ def test_rbf_multiquadric_overflow_protection():
         assert np.allclose(res_cu, res_np, atol=1e-12)
 
 
+def test_reference_renderer_type_hints_and_rendering():
+    """Validates that ReferenceRenderer has valid typing annotations and renders cleanly."""
+    import typing
+
+    from mathfield.core.domain import CoordinateDomain2D, DomainMode
+    from mathfield.core.verify.renderer import ReferenceRenderer
+
+    hints = typing.get_type_hints(ReferenceRenderer.render_ast)
+    assert "color_space" in hints
+
+    renderer = ReferenceRenderer()
+    ast = parse("sin(x) + cos(y)")
+    domain = CoordinateDomain2D(width=16, height=16, mode=DomainMode.UNIT_SQUARE)
+    rendered = renderer.render_ast(ast, domain=domain, width=16, height=16)
+    assert rendered.shape == (16, 16)
+    assert np.all(np.isfinite(rendered))

@@ -6,7 +6,8 @@ Compiles AST expressions into register-resident CUDA C++ elementwise kernels on 
 from __future__ import annotations
 
 import warnings
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
+
 import numpy as np
 
 # Global flag and cache
@@ -16,12 +17,10 @@ _KERNEL_CACHE: Dict[int, Any] = {}
 
 class CUDAOutOfMemoryError(RuntimeError):
     """Raised when GPU VRAM allocation fails."""
-    pass
 
 
 class CUDANotAvailableError(RuntimeError):
     """Raised when CUDA/CuPy is requested but unavailable."""
-    pass
 
 
 def is_cuda_available() -> bool:
@@ -241,45 +240,75 @@ def ast_to_cuda_snippet(node: Any) -> str:
         return child
 
     elif isinstance(node, BinaryOpNode):
-        l = ast_to_cuda_snippet(node.left)
-        r = ast_to_cuda_snippet(node.right)
+        left_str = ast_to_cuda_snippet(node.left)
+        right_str = ast_to_cuda_snippet(node.right)
         op = node.op
 
-        if op == "+": return f"(({l}) + ({r}))"
-        elif op == "-": return f"(({l}) - ({r}))"
-        elif op == "*": return f"(({l}) * ({r}))"
-        elif op == "/": return f"safe_div(({l}), ({r}), (T)1e-12)"
-        elif op in ("^", "**"): return f"safe_pow(({l}), ({r}))"
-        elif op == "%": return f"fmod(({l}), (({r}) != (T)0.0 ? ({r}) : (T)1e-12))"
+        if op == "+":
+            return f"(({left_str}) + ({right_str}))"
+        elif op == "-":
+            return f"(({left_str}) - ({right_str}))"
+        elif op == "*":
+            return f"(({left_str}) * ({right_str}))"
+        elif op == "/":
+            return f"safe_div(({left_str}), ({right_str}), (T)1e-12)"
+        elif op in ("^", "**"):
+            return f"safe_pow(({left_str}), ({right_str}))"
+        elif op == "%":
+            return f"fmod(({left_str}), (({right_str}) != (T)0.0 ? ({right_str}) : (T)1e-12))"
 
     elif isinstance(node, FunctionCallNode):
         args = [ast_to_cuda_snippet(arg) for arg in node.args]
         f = node.func
 
-        if f == "sin": return f"sin({args[0]})"
-        elif f == "cos": return f"cos({args[0]})"
-        elif f == "tan": return f"safe_tan({args[0]})"
-        elif f == "sinc": return f"safe_sinc({args[0]})"
-        elif f == "asin": return f"safe_asin({args[0]})"
-        elif f == "acos": return f"safe_acos({args[0]})"
-        elif f == "atan": return f"atan({args[0]})"
-        elif f == "sinh": return f"safe_sinh({args[0]})"
-        elif f == "cosh": return f"safe_cosh({args[0]})"
-        elif f == "tanh": return f"tanh({args[0]})"
-        elif f == "exp": return f"safe_exp({args[0]})"
-        elif f == "log": return f"safe_log({args[0]}, (T)1e-15)"
-        elif f == "sqrt": return f"safe_sqrt({args[0]})"
-        elif f == "cbrt": return f"safe_cbrt({args[0]})"
-        elif f == "square": return f"(({args[0]}) * ({args[0]}))"
-        elif f == "pow": return f"safe_pow(({args[0]}), ({args[1]}))"
-        elif f == "abs": return f"fabs({args[0]})"
-        elif f == "sign": return f"((({args[0]}) > (T)0.0) ? (T)1.0 : ((({args[0]}) < (T)0.0) ? (T)-1.0 : (T)0.0))"
-        elif f == "sigmoid": return f"sigmoid_fn({args[0]})"
-        elif f == "softplus": return f"softplus_fn({args[0]})"
-        elif f == "clamp": return f"clamp_fn(({args[0]}), ({args[1]}), ({args[2]}))"
-        elif f == "rbf_gaussian": return f"rbf_gaussian(({args[0]}), ({args[1]}))"
-        elif f == "rbf_multiquadric": return f"rbf_multiquadric(({args[0]}), ({args[1]}))"
-        elif f == "rbf_wendland": return f"rbf_wendland(({args[0]}), ({args[1]}))"
+        if f == "sin":
+            return f"sin({args[0]})"
+        elif f == "cos":
+            return f"cos({args[0]})"
+        elif f == "tan":
+            return f"safe_tan({args[0]})"
+        elif f == "sinc":
+            return f"safe_sinc({args[0]})"
+        elif f == "asin":
+            return f"safe_asin({args[0]})"
+        elif f == "acos":
+            return f"safe_acos({args[0]})"
+        elif f == "atan":
+            return f"atan({args[0]})"
+        elif f == "sinh":
+            return f"safe_sinh({args[0]})"
+        elif f == "cosh":
+            return f"safe_cosh({args[0]})"
+        elif f == "tanh":
+            return f"tanh({args[0]})"
+        elif f == "exp":
+            return f"safe_exp({args[0]})"
+        elif f == "log":
+            return f"safe_log({args[0]}, (T)1e-15)"
+        elif f == "sqrt":
+            return f"safe_sqrt({args[0]})"
+        elif f == "cbrt":
+            return f"safe_cbrt({args[0]})"
+        elif f == "square":
+            return f"(({args[0]}) * ({args[0]}))"
+        elif f == "pow":
+            return f"safe_pow(({args[0]}), ({args[1]}))"
+        elif f == "abs":
+            return f"fabs({args[0]})"
+        elif f == "sign":
+            return f"((({args[0]}) > (T)0.0) ? (T)1.0 : ((({args[0]}) < (T)0.0) ? (T)-1.0 : (T)0.0))"
+        elif f == "sigmoid":
+            return f"sigmoid_fn({args[0]})"
+        elif f == "softplus":
+            return f"softplus_fn({args[0]})"
+        elif f == "clamp":
+            return f"clamp_fn(({args[0]}), ({args[1]}), ({args[2]}))"
+        elif f == "rbf_gaussian":
+            return f"rbf_gaussian(({args[0]}), ({args[1]}))"
+        elif f == "rbf_multiquadric":
+            return f"rbf_multiquadric(({args[0]}), ({args[1]}))"
+        elif f == "rbf_wendland":
+            return f"rbf_wendland(({args[0]}), ({args[1]}))"
 
     return f"({node})"
 
@@ -326,6 +355,7 @@ def evaluate_cupy(
         raise ValueError(f"Coordinate arrays X and Y must have identical shapes, got {X.shape} and {Y.shape}")
 
     from mathfield.core.ast.nodes import validate_parameter_bounds
+
     validate_parameter_bounds(node, params)
 
     import cupy as cp
@@ -366,6 +396,7 @@ def compute_residuals_cupy(
         raise CUDANotAvailableError("CUDA/CuPy is not available.")
 
     import cupy as cp
+
     try:
         gpu_p = pred if isinstance(pred, cp.ndarray) else cp.asarray(pred)
         gpu_t = target if isinstance(target, cp.ndarray) else cp.asarray(target)
@@ -386,6 +417,7 @@ def compute_sse_cupy(
         raise CUDANotAvailableError("CUDA/CuPy is not available.")
 
     import cupy as cp
+
     try:
         gpu_p = pred if isinstance(pred, cp.ndarray) else cp.asarray(pred)
         gpu_t = target if isinstance(target, cp.ndarray) else cp.asarray(target)

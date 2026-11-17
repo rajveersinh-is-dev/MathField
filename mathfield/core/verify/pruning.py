@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import List, Optional
 
 import numpy as np
 
@@ -20,6 +20,7 @@ from mathfield.core.optimize.solvers import solve_linear_lstsq
 @dataclass(frozen=True, slots=True)
 class PruningResult:
     """Outcome of BIC backward elimination pruning."""
+
     retained_indices: List[int]
     eliminated_indices: List[int]
     initial_bic: float
@@ -63,8 +64,8 @@ class BICPruner:
         # Solve initial model
         c_init, _ = solve_linear_lstsq(Phi_mat, y, reg_lambda=reg_lambda, method="svd")
         res_init = y - Phi_mat @ c_init
-        rss_init = float(np.sum(res_init ** 2))
-        mse_init = rss_init / N
+        rss_init = float(np.sum(res_init**2))
+        mse_init = (rss_init / N) if N > 0 else 0.0
         bic_init = self.compute_bic(rss_init, N, len(active_indices))
 
         curr_bic = bic_init
@@ -81,7 +82,7 @@ class BICPruner:
 
                 c_sub, _ = solve_linear_lstsq(Phi_sub, y, reg_lambda=reg_lambda, method="svd")
                 res_sub = y - Phi_sub @ c_sub
-                rss_sub = float(np.sum(res_sub ** 2))
+                rss_sub = float(np.sum(res_sub**2))
                 cand_bic = self.compute_bic(rss_sub, N, len(cand_sub))
 
                 if cand_bic < best_cand_bic:
@@ -106,7 +107,7 @@ class BICPruner:
             full_c[idx] = curr_c[i]
 
         res_final = y - Phi_mat @ full_c
-        mse_final = float(np.mean(res_final ** 2))
+        mse_final = float(np.mean(res_final**2)) if N > 0 else 0.0
 
         return PruningResult(
             retained_indices=active_indices,

@@ -5,7 +5,8 @@ Algebraic simplification and analytical symbolic differentiation for MathField A
 from __future__ import annotations
 
 import math
-from typing import Optional, Set
+from typing import Optional
+
 from mathfield.core.ast.nodes import (
     ASTNode,
     BinaryOpNode,
@@ -107,9 +108,8 @@ def _simplify_step(node: ASTNode) -> ASTNode:
                             return ConstantNode(res)
                 except (OverflowError, ValueError):
                     pass
-            elif op == "%":
-                if abs(rv) > 1e-15:
-                    return ConstantNode(math.fmod(lv, rv))
+            elif op == "%" and abs(rv) > 1e-15:
+                return ConstantNode(math.fmod(lv, rv))
 
         # 2. Additive Identities
         if op == "+":
@@ -124,7 +124,12 @@ def _simplify_step(node: ASTNode) -> ASTNode:
             if isinstance(left, UnaryOpNode) and left.op == "-":
                 return _simplify_step(BinaryOpNode("-", right, left.operand))
             # Reassociation: (u + C1) + C2 -> u + (C1 + C2)
-            if isinstance(left, BinaryOpNode) and left.op == "+" and isinstance(left.right, ConstantNode) and isinstance(right, ConstantNode):
+            if (
+                isinstance(left, BinaryOpNode)
+                and left.op == "+"
+                and isinstance(left.right, ConstantNode)
+                and isinstance(right, ConstantNode)
+            ):
                 return _simplify_step(BinaryOpNode("+", left.left, ConstantNode(left.right.value + right.value)))
 
         elif op == "-":
@@ -161,7 +166,12 @@ def _simplify_step(node: ASTNode) -> ASTNode:
             if isinstance(right, UnaryOpNode) and right.op == "-":
                 return _simplify_step(UnaryOpNode("-", BinaryOpNode("*", left, right.operand)))
             # Reassociation: (u * C1) * C2 -> u * (C1 * C2)
-            if isinstance(left, BinaryOpNode) and left.op == "*" and isinstance(left.right, ConstantNode) and isinstance(right, ConstantNode):
+            if (
+                isinstance(left, BinaryOpNode)
+                and left.op == "*"
+                and isinstance(left.right, ConstantNode)
+                and isinstance(right, ConstantNode)
+            ):
                 return _simplify_step(BinaryOpNode("*", left.left, ConstantNode(left.right.value * right.value)))
 
         # 4. Division Identities
@@ -193,7 +203,12 @@ def _simplify_step(node: ASTNode) -> ASTNode:
             if is_zero(left) and isinstance(right, ConstantNode) and right.value > 0:
                 return ConstantNode(0.0)
             # (u ^ a) ^ b -> u ^ (a * b) for constants a, b
-            if isinstance(left, BinaryOpNode) and left.op in ("^", "**") and isinstance(left.right, ConstantNode) and isinstance(right, ConstantNode):
+            if (
+                isinstance(left, BinaryOpNode)
+                and left.op in ("^", "**")
+                and isinstance(left.right, ConstantNode)
+                and isinstance(right, ConstantNode)
+            ):
                 return _simplify_step(BinaryOpNode("^", left.left, ConstantNode(left.right.value * right.value)))
 
         return BinaryOpNode(op, left, right)
@@ -266,10 +281,7 @@ def _diff_rec(node: ASTNode, target: str) -> ASTNode:
     if isinstance(node, ConstantNode):
         return ConstantNode(0.0)
 
-    elif isinstance(node, VariableNode):
-        return ConstantNode(1.0 if node.name == target else 0.0)
-
-    elif isinstance(node, ParameterNode):
+    elif isinstance(node, (VariableNode, ParameterNode)):
         return ConstantNode(1.0 if node.name == target else 0.0)
 
     elif isinstance(node, UnaryOpNode):
@@ -354,19 +366,22 @@ def _diff_rec(node: ASTNode, target: str) -> ASTNode:
             # d/du [sin(pi * u) / (pi * u)] = (pi * u * cos(pi * u) - sin(pi * u)) / (pi * u^2)
             # If du is 0, already returned 0 above.
             pi_u = BinaryOpNode("*", ConstantNode(math.pi, symbol="pi"), u)
-            num = BinaryOpNode("-",
-                BinaryOpNode("*", pi_u, FunctionCallNode("cos", (pi_u,))),
-                FunctionCallNode("sin", (pi_u,))
+            num = BinaryOpNode(
+                "-", BinaryOpNode("*", pi_u, FunctionCallNode("cos", (pi_u,))), FunctionCallNode("sin", (pi_u,))
             )
             den = BinaryOpNode("*", ConstantNode(math.pi, symbol="pi"), BinaryOpNode("^", u, ConstantNode(2.0)))
             return simplify(BinaryOpNode("*", BinaryOpNode("/", num, den), du))
         elif f == "asin":
             # asin'(u) = 1 / sqrt(1 - u^2)
-            den = FunctionCallNode("sqrt", (BinaryOpNode("-", ConstantNode(1.0), BinaryOpNode("^", u, ConstantNode(2.0))),))
+            den = FunctionCallNode(
+                "sqrt", (BinaryOpNode("-", ConstantNode(1.0), BinaryOpNode("^", u, ConstantNode(2.0))),)
+            )
             return simplify(BinaryOpNode("/", du, den))
         elif f == "acos":
             # acos'(u) = -1 / sqrt(1 - u^2)
-            den = FunctionCallNode("sqrt", (BinaryOpNode("-", ConstantNode(1.0), BinaryOpNode("^", u, ConstantNode(2.0))),))
+            den = FunctionCallNode(
+                "sqrt", (BinaryOpNode("-", ConstantNode(1.0), BinaryOpNode("^", u, ConstantNode(2.0))),)
+            )
             return simplify(BinaryOpNode("/", UnaryOpNode("-", du), den))
         elif f == "atan":
             # atan'(u) = 1 / (1 + u^2)
@@ -443,12 +458,18 @@ def _diff_rec(node: ASTNode, target: str) -> ASTNode:
 
             term_dr = ConstantNode(0.0)
             if not is_zero(dr):
-                factor_r = BinaryOpNode("/", BinaryOpNode("*", ConstantNode(-20.0), r), BinaryOpNode("^", rad, ConstantNode(2.0)))
+                factor_r = BinaryOpNode(
+                    "/", BinaryOpNode("*", ConstantNode(-20.0), r), BinaryOpNode("^", rad, ConstantNode(2.0))
+                )
                 term_dr = BinaryOpNode("*", BinaryOpNode("*", factor_r, t3), dr)
 
             term_drad = ConstantNode(0.0)
             if not is_zero(drad):
-                factor_R = BinaryOpNode("/", BinaryOpNode("*", ConstantNode(20.0), BinaryOpNode("^", r, ConstantNode(2.0))), BinaryOpNode("^", rad, ConstantNode(3.0)))
+                factor_R = BinaryOpNode(
+                    "/",
+                    BinaryOpNode("*", ConstantNode(20.0), BinaryOpNode("^", r, ConstantNode(2.0))),
+                    BinaryOpNode("^", rad, ConstantNode(3.0)),
+                )
                 term_drad = BinaryOpNode("*", BinaryOpNode("*", factor_R, t3), drad)
 
             return simplify(BinaryOpNode("+", term_dr, term_drad))

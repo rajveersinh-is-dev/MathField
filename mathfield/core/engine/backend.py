@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 from typing import Any, Dict, List, Optional
+
 import numpy as np
 
 from mathfield.core.ast.nodes import ASTNode
@@ -120,6 +121,7 @@ class MultiTierEvaluator:
             raise ValueError(f"Coordinate arrays X and Y must have identical shapes, got {X.shape} and {Y.shape}")
 
         from mathfield.core.ast.nodes import validate_parameter_bounds
+
         validate_parameter_bounds(ast, params)
 
         backend_choice = self._normalize_backend_name(preferred_backend or self.preferred_backend)

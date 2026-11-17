@@ -11,7 +11,6 @@ from mathfield.core.codegen.latex import to_latex
 from mathfield.core.codegen.numpy_gen import (
     generate_standalone_function,
     generate_standalone_script,
-    to_python_code,
 )
 
 
@@ -37,6 +36,7 @@ def test_latex_formatting():
 def test_matplotlib_mathtext_compatibility():
     try:
         from matplotlib.mathtext import MathTextParser
+
         parser = MathTextParser("path")
     except ImportError:
         pytest.skip("matplotlib not installed or available.")
@@ -115,3 +115,29 @@ def test_export_artwork_poster_square_and_portrait(tmp_path):
     assert out_pt.exists()
     assert out_pt.stat().st_size > 1000
 
+
+def test_artwork_poster_dynamic_formula_panel():
+    from PIL import Image
+
+    from mathfield.export.artwork_poster import generate_math_panel
+
+    # 1. With explicit dynamic global and patch equations
+    result_with_eqs = {
+        "coordinate_domain": {"width": 128, "height": 96},
+        "global_equations": {"R": "0.8 T_1(x)", "G": "0.5 T_2(y)", "B": "0.1"},
+        "patch_equations": [
+            {"id": "L_1", "formula": "0.45 cos(pi*u)"},
+            {"id": "L_2", "formula": "0.22 sin(pi*v)"},
+        ],
+    }
+    panel_img = generate_math_panel(result_with_eqs, width_px=800, height_px=400)
+    assert isinstance(panel_img, Image.Image)
+    assert panel_img.size == (800, 400)
+
+    # 2. Without equations (graceful generic symbolic fallback)
+    result_empty = {
+        "coordinate_domain": {"width": 64, "height": 64},
+    }
+    panel_empty = generate_math_panel(result_empty, width_px=800, height_px=400)
+    assert isinstance(panel_empty, Image.Image)
+    assert panel_empty.size == (800, 400)

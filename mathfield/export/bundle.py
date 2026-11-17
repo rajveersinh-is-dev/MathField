@@ -8,7 +8,6 @@ and compiled reports into an independently verifiable directory or zip archive.
 
 from __future__ import annotations
 
-import io
 import shutil
 import tempfile
 import zipfile
@@ -90,7 +89,15 @@ if __name__ == "__main__":
             "project_name": "MathField_Reconstruction",
             "coordinate_domain": result.get(
                 "coordinate_domain",
-                {"x_min": -1.0, "x_max": 1.0, "y_min": -1.0, "y_max": 1.0, "pixel_width": 64, "pixel_height": 64, "aspect_ratio": 1.0}
+                {
+                    "x_min": -1.0,
+                    "x_max": 1.0,
+                    "y_min": -1.0,
+                    "y_max": 1.0,
+                    "pixel_width": 64,
+                    "pixel_height": 64,
+                    "aspect_ratio": 1.0,
+                },
             ),
             "color_space": result.get("color_space", "RGB"),
             "mode": result.get("mode", "MODE_A_DISCOVERY"),
@@ -101,17 +108,14 @@ if __name__ == "__main__":
                         {
                             "channel": "RGB",
                             "formula": result.get("expressions", {}).get("formula", "sin(x) + cos(y)"),
-                            "parameters": [1.0, 0.5]
+                            "parameters": [1.0, 0.5],
                         }
                     ]
-                }
+                },
             ),
             "local_patches": [],
-            "final_metrics": result.get(
-                "metrics",
-                {"mse": 0.001, "psnr": 30.0, "ssim": 0.95, "complexity": 12.0}
-            ),
-            "random_seed": 42
+            "final_metrics": result.get("metrics", {"mse": 0.001, "psnr": 30.0, "ssim": 0.95, "complexity": 12.0}),
+            "random_seed": 42,
         }
         save_project(proj_dict, project_path)
 

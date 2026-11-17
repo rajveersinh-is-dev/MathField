@@ -12,7 +12,6 @@ Unit test suite for mathfield.core.basis:
 - Basis to AST parity
 """
 
-import math
 import numpy as np
 import pytest
 
@@ -172,6 +171,83 @@ def test_basis_to_ast_evaluation_parity() -> None:
     val_ast = evaluate_numpy(ast, X, Y, np.array([]))
 
     np.testing.assert_allclose(val_basis, val_ast, atol=1e-10)
+
+
+def test_all_basis_to_ast_parity_and_guards() -> None:
+    x = np.linspace(-0.8, 0.8, 8)
+    X, Y = np.meshgrid(x, x)
+
+    # 1. Legendre 2D
+    leg = Legendre2D(2, 2)
+    c_leg = np.ones(leg.num_terms) * 0.4
+    ast_leg = leg.to_ast(coefficients=c_leg)
+    np.testing.assert_allclose(leg.evaluate(X, Y, coefficients=c_leg), evaluate_numpy(ast_leg, X, Y, np.array([])), atol=1e-10)
+
+    # 2. Fourier 2D
+    fou = Fourier2D([(1.0, 0.0), (0.0, 1.0)])
+    c_fou = np.array([0.2, 0.3, 0.4, 0.1, -0.2])
+    ast_fou = fou.to_ast(coefficients=c_fou)
+    np.testing.assert_allclose(fou.evaluate(X, Y, coefficients=c_fou), evaluate_numpy(ast_fou, X, Y, np.array([])), atol=1e-10)
+
+    # Fourier length guard
+    with pytest.raises(ValueError, match="less than required basis terms"):
+        fou.to_ast(coefficients=np.array([0.1, 0.2]))
+
+    # Chebyshev length guard
+    cheb = Chebyshev2D(2, 2)
+    with pytest.raises(ValueError, match="less than required basis terms"):
+        cheb.to_ast(coefficients=np.array([0.1]))
+
+    # Legendre length guard
+    with pytest.raises(ValueError, match="less than required basis terms"):
+        leg.to_ast(coefficients=np.array([0.1]))
+
+    # 3. DCT2
+    dct = DCT2Basis(2, 2)
+    c_dct = np.ones(dct.num_terms) * 0.1
+    ast_dct = dct.to_ast(coefficients=c_dct)
+    np.testing.assert_allclose(dct.evaluate(X, Y, coefficients=c_dct), evaluate_numpy(ast_dct, X, Y, np.array([])), atol=1e-10)
+
+    # DCT2 length guard
+    with pytest.raises(ValueError, match="less than required basis terms"):
+        dct.to_ast(coefficients=np.array([0.1, 0.2]))
+
+    # 4. Wendland C2 RBF
+    w = WendlandC2RBF(np.array([[0.0, 0.0], [0.5, -0.5]]), np.array([1.5, 1.5]))
+    c_w = np.array([1.0, -0.5])
+    ast_w = w.to_ast(coefficients=c_w)
+    np.testing.assert_allclose(w.evaluate(X, Y, coefficients=c_w), evaluate_numpy(ast_w, X, Y, np.array([])), atol=1e-10)
+    with pytest.raises(ValueError, match="less than required basis terms"):
+        w.to_ast(coefficients=np.array([0.1]))
+
+    # 5. Gaussian RBF
+    g = GaussianRBF(np.array([[0.0, 0.0]]), np.array([1.0]))
+    c_g = np.array([0.8])
+    ast_g = g.to_ast(coefficients=c_g)
+    np.testing.assert_allclose(g.evaluate(X, Y, coefficients=c_g), evaluate_numpy(ast_g, X, Y, np.array([])), atol=1e-10)
+    with pytest.raises(ValueError, match="less than required basis terms"):
+        g.to_ast(coefficients=np.array([]))
+
+    # 6. Multiquadric RBF
+    mq = MultiquadricRBF(np.array([[0.0, 0.0]]), np.array([1.0]))
+    c_mq = np.array([0.4])
+    ast_mq = mq.to_ast(coefficients=c_mq)
+    np.testing.assert_allclose(mq.evaluate(X, Y, coefficients=c_mq), evaluate_numpy(ast_mq, X, Y, np.array([])), atol=1e-10)
+    with pytest.raises(ValueError, match="less than required basis terms"):
+        mq.to_ast(coefficients=np.array([]))
+
+    # 7. Rational Surface
+    rat = Rational2D(deg_x=1, deg_y=1)
+    ast_rat = rat.to_ast()
+    np.testing.assert_allclose(rat.evaluate(X, Y), evaluate_numpy(ast_rat, X, Y, np.array([])), atol=1e-10)
+
+    # 8. B-Spline Surface (verifies FunctionCallNode fix and length guard)
+    bsp = BSplineSurface2D(np.linspace(0, 1, 8), np.linspace(0, 1, 8))
+    ast_bsp = bsp.to_ast()
+    val_bsp = evaluate_numpy(ast_bsp, X, Y, np.array([]))
+    assert np.all(np.isfinite(val_bsp))
+    with pytest.raises(ValueError, match="less than required basis terms"):
+        bsp.to_ast(coefficients=np.array([0.1]))
 
 
 def test_center_generators() -> None:

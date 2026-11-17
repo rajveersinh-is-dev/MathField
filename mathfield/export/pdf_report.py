@@ -11,19 +11,16 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 
 import numpy as np
 from PIL import Image
-
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import (
     HRFlowable,
     Image as RLImage,
-    KeepTogether,
-    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -82,16 +79,6 @@ def export_pdf_report(
         textColor=colors.HexColor("#1e293b"),
         spaceBefore=12,
         spaceAfter=6,
-    )
-    subheading_style = ParagraphStyle(
-        "ReportSubHeading",
-        parent=styles["Heading3"],
-        fontName="Helvetica-Bold",
-        fontSize=10,
-        leading=13,
-        textColor=colors.HexColor("#334155"),
-        spaceBefore=8,
-        spaceAfter=4,
     )
     body_style = ParagraphStyle(
         "ReportBody",
@@ -185,7 +172,9 @@ def export_pdf_report(
             Paragraph("<b>Peak SNR (PSNR):</b>", table_header_style),
             Paragraph(f"<b>{metrics.get('psnr', 0.0):.2f} dB</b>", table_cell_style),
             Paragraph("<b>Structural Similarity (SSIM):</b>", table_header_style),
-            Paragraph(f"<b>{metrics.get('ssim', 0.0) * 100:.2f}%</b> ({metrics.get('ssim', 0.0):.4f})", table_cell_style),
+            Paragraph(
+                f"<b>{metrics.get('ssim', 0.0) * 100:.2f}%</b> ({metrics.get('ssim', 0.0):.4f})", table_cell_style
+            ),
         ],
     ]
     meta_table = Table(meta_data, colWidths=[120, 150, 120, 150])
@@ -275,8 +264,7 @@ def export_pdf_report(
     )
     story.append(Spacer(1, 4))
     wendland_formula = (
-        "w_k(x, y) = ψ₄( |x - c_{x,k}| / R_{x,k} ) · ψ₄( |y - c_{y,k}| / R_{y,k} ),   "
-        "where ψ₄(r) = (1 - r)₊⁴ (4r + 1)"
+        "w_k(x, y) = ψ₄( |x - c_{x,k}| / R_{x,k} ) · ψ₄( |y - c_{y,k}| / R_{y,k} ),   where ψ₄(r) = (1 - r)₊⁴ (4r + 1)"
     )
     story.append(Paragraph(wendland_formula, eq_style))
     story.append(Spacer(1, 4))
@@ -382,13 +370,29 @@ def export_pdf_report(
     ]
 
     metric_defs = [
-        ("PSNR", f"{metrics.get('psnr', 0.0):.2f} dB", "Peak Signal-to-Noise Ratio (fidelity against discrete ground truth)"),
-        ("SSIM", f"{metrics.get('ssim', 0.0):.4f} ({metrics.get('ssim', 0.0)*100:.2f}%)", "Structural Similarity Index (geometric edge and gradient alignment)"),
+        (
+            "PSNR",
+            f"{metrics.get('psnr', 0.0):.2f} dB",
+            "Peak Signal-to-Noise Ratio (fidelity against discrete ground truth)",
+        ),
+        (
+            "SSIM",
+            f"{metrics.get('ssim', 0.0):.4f} ({metrics.get('ssim', 0.0) * 100:.2f}%)",
+            "Structural Similarity Index (geometric edge and gradient alignment)",
+        ),
         ("MSE", f"{metrics.get('mse', 0.0):.8f}", "Normalized Mean Squared Error (variance across all channels)"),
         ("MAE", f"{metrics.get('mae', 0.0):.8f}", "Mean Absolute Error (average pixel deviation across canvas)"),
         ("L_INF", f"{metrics.get('linf', 0.0):.6f}", "Chebyshev Maximum Absolute Error (worst-case deviation)"),
-        ("PARAMETER_COUNT", f"{len(result.get('parameters', {})):,}", "Total discovered continuous mathematical coefficients"),
-        ("LOCAL_PATCHES", f"{len(result.get('patch_equations', [])) or result.get('global_model', {}).get('local_patches_count', 'N/A')}", "Adaptive quadtree leaves with localized harmonic expansions"),
+        (
+            "PARAMETER_COUNT",
+            f"{len(result.get('parameters', {})):,}",
+            "Total discovered continuous mathematical coefficients",
+        ),
+        (
+            "LOCAL_PATCHES",
+            f"{len(result.get('patch_equations', [])) or result.get('global_model', {}).get('local_patches_count', 'N/A')}",
+            "Adaptive quadtree leaves with localized harmonic expansions",
+        ),
         ("CONVERGENCE", "CONVERGED (Tikhonov Regularized)", "SVD numerical condition monitoring: κ < 10⁴"),
     ]
 
@@ -422,11 +426,10 @@ def export_pdf_report(
         recon_img = result.get("rendered_image")
     err_img = result.get("error_heatmap")
 
-    if err_img is None and orig_img is not None and recon_img is not None:
-        if isinstance(orig_img, np.ndarray) and isinstance(recon_img, np.ndarray):
-            diff = np.abs(recon_img.astype(float) - orig_img.astype(float))
-            diff_mag = np.mean(diff, axis=-1) if diff.ndim == 3 else diff
-            err_img = np.clip(diff_mag * 5.0 * 255.0, 0, 255).astype(np.uint8)
+    if err_img is None and isinstance(orig_img, np.ndarray) and isinstance(recon_img, np.ndarray):
+        diff = np.abs(recon_img.astype(float) - orig_img.astype(float))
+        diff_mag = np.mean(diff, axis=-1) if diff.ndim == 3 else diff
+        err_img = np.clip(diff_mag * 5.0 * 255.0, 0, 255).astype(np.uint8)
 
     img_triplet = [
         ("Original Target", orig_img),

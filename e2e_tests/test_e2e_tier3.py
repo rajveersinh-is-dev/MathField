@@ -131,13 +131,7 @@ class TestTier3PairwiseInteractions:
         out_script = e2e_temp_dir / "mode_a_repro.py"
         out_png = e2e_temp_dir / "mode_a_repro.png"
 
-        script_code = generate_standalone_script(
-            ast_node,
-            params=[],
-            width=16,
-            height=16,
-            output_path=str(out_png)
-        )
+        script_code = generate_standalone_script(ast_node, params=[], width=16, height=16, output_path=str(out_png))
         out_script.write_text(script_code, encoding="utf-8")
 
         # Security and purity audit: zero mathfield imports, zero eval/exec
@@ -174,11 +168,7 @@ class TestTier3PairwiseInteractions:
         img[10:22, 10:22] = 255
         dom = CoordinateDomain2D(32, 32)
 
-        ctx = PipelineContext(
-            image=img,
-            domain=dom,
-            config={"max_depth": 3, "degree": 2, "split_threshold": 0.05}
-        )
+        ctx = PipelineContext(image=img, domain=dom, config={"max_depth": 3, "degree": 2, "split_threshold": 0.05})
         pipe = ModeBPipeline()
         status = pipe.execute(ctx)
 
@@ -202,11 +192,14 @@ class TestTier3PairwiseInteractions:
         X, Y = np.meshgrid(x, y)
 
         # Separable model: Phi(theta, X, Y) @ c where theta is frequency
-        basis_fn = lambda theta, X, Y: np.column_stack([
-            np.ones(X.size),
-            X.ravel(),
-            np.sin(theta[0] * Y.ravel()),
-        ])
+        def basis_fn(theta, X, Y):
+            return np.column_stack(
+                [
+                    np.ones(X.size),
+                    X.ravel(),
+                    np.sin(theta[0] * Y.ravel()),
+                ]
+            )
 
         true_theta = np.array([3.14159])
         true_c = np.array([0.5, 0.25, 0.75])
@@ -510,14 +503,16 @@ class TestTier3PairwiseInteractions:
         np.random.seed(42)
         n_samples = 100
         x = np.linspace(-1.0, 1.0, n_samples)
-        Phi = np.column_stack([
-            np.ones(n_samples),
-            x,
-            x ** 2,
-            np.random.randn(n_samples) * 0.001,
-            np.random.randn(n_samples) * 0.001,
-        ])
-        y = 1.0 + 2.0 * x + 3.0 * (x ** 2) + np.random.randn(n_samples) * 0.01
+        Phi = np.column_stack(
+            [
+                np.ones(n_samples),
+                x,
+                x**2,
+                np.random.randn(n_samples) * 0.001,
+                np.random.randn(n_samples) * 0.001,
+            ]
+        )
+        y = 1.0 + 2.0 * x + 3.0 * (x**2) + np.random.randn(n_samples) * 0.01
 
         pruner = BICPruner()
         res = pruner.prune_matrix(Phi, y, reg_lambda=0.01)
@@ -570,7 +565,7 @@ class TestTier3PairwiseInteractions:
         png_path = e2e_temp_dir / "alpha_export.png"
         sample_model = {
             "coordinate_domain": {"x_min": -1.0, "x_max": 1.0, "y_min": -1.0, "y_max": 1.0},
-            "expressions": {"R": "x", "G": "y", "B": "0", "A": "0.5"}
+            "expressions": {"R": "x", "G": "y", "B": "0", "A": "0.5"},
         }
         export_png(sample_model, png_path, width=32, height=32)
         info = inspect_png(png_path, has_alpha=True, expected_shape=(32, 32))
@@ -588,10 +583,7 @@ class TestTier3PairwiseInteractions:
             pytest.skip("mathfield.export.python_script is under active development in Milestone M5")
 
         script_path = e2e_temp_dir / "color_repro.py"
-        sample_model = {
-            "color_space": "CIELAB",
-            "expressions": {"L": "50", "a": "x * 20", "b": "y * 20"}
-        }
+        sample_model = {"color_space": "CIELAB", "expressions": {"L": "50", "a": "x * 20", "b": "y * 20"}}
         export_standalone_script(sample_model, script_path)
         audit = validate_standalone_python_script(script_path)
         assert "mathfield" not in audit["imports"]
@@ -697,7 +689,7 @@ class TestTier3PairwiseInteractions:
         analytical_grad = eval(py_code_grad, {"np": np, "X": X, "Y": Y})
 
         # Ground truth derivative of c0 * x^3 w.r.t c0 is x^3
-        truth_grad = X ** 3
+        truth_grad = X**3
         diff_max = np.max(np.abs(analytical_grad - truth_grad))
         assert diff_max < 1e-12
 

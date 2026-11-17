@@ -9,7 +9,7 @@ AST node inspector, real-time parameter sliders with event debouncing, and formu
 from __future__ import annotations
 
 import io
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 
@@ -56,6 +56,7 @@ class EquationWorkspace:
         Handles long formulas gracefully by wrapping or clipping.
         """
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 

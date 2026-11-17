@@ -13,7 +13,6 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 
 from mathfield.core.local.local_patch import LocalPatch
-from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
 
 
 class RegionWorkspace:
@@ -127,9 +126,9 @@ class RegionWorkspace:
         if norm_metric in ("mse", "mean_squared_error"):
             return 0.05 * (np.sin(2.0 * np.pi * X) ** 2 + np.cos(2.0 * np.pi * Y) ** 2)
         elif norm_metric == "ssim":
-            return 0.95 - 0.1 * (X ** 2 + Y ** 2) / 2.0
+            return 0.95 - 0.1 * (X**2 + Y**2) / 2.0
         elif norm_metric == "ciede2000":
-            return 2.5 * np.sqrt(np.maximum(0.0, X ** 2 + Y ** 2))
+            return 2.5 * np.sqrt(np.maximum(0.0, X**2 + Y**2))
         elif norm_metric == "abs_diff":
             return np.abs(np.sin(np.pi * X) * np.cos(np.pi * Y))
         elif norm_metric == "signed_diff":

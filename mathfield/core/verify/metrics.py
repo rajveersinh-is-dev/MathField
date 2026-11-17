@@ -11,7 +11,7 @@ Pure NumPy Reference Quality Metrics:
 from __future__ import annotations
 
 import math
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 import numpy as np
 
@@ -22,7 +22,11 @@ def compute_mse(
     weights: Optional[np.ndarray] = None,
 ) -> float:
     """Mean Squared Error."""
-    diff_sq = (np.asarray(a, dtype=np.float64) - np.asarray(b, dtype=np.float64)) ** 2
+    arr_a = np.asarray(a, dtype=np.float64)
+    arr_b = np.asarray(b, dtype=np.float64)
+    if arr_a.size == 0 or arr_b.size == 0:
+        return 0.0
+    diff_sq = (arr_a - arr_b) ** 2
     if weights is not None:
         w = np.asarray(weights, dtype=np.float64)
         if w.ndim < diff_sq.ndim:
@@ -37,7 +41,11 @@ def compute_mae(
     weights: Optional[np.ndarray] = None,
 ) -> float:
     """Mean Absolute Error."""
-    diff = np.abs(np.asarray(a, dtype=np.float64) - np.asarray(b, dtype=np.float64))
+    arr_a = np.asarray(a, dtype=np.float64)
+    arr_b = np.asarray(b, dtype=np.float64)
+    if arr_a.size == 0 or arr_b.size == 0:
+        return 0.0
+    diff = np.abs(arr_a - arr_b)
     if weights is not None:
         w = np.asarray(weights, dtype=np.float64)
         if w.ndim < diff.ndim:
@@ -48,7 +56,11 @@ def compute_mae(
 
 def compute_linf(a: np.ndarray, b: np.ndarray) -> float:
     """Chebyshev L_infinity (maximum absolute error)."""
-    return float(np.max(np.abs(np.asarray(a, dtype=np.float64) - np.asarray(b, dtype=np.float64))))
+    arr_a = np.asarray(a, dtype=np.float64)
+    arr_b = np.asarray(b, dtype=np.float64)
+    if arr_a.size == 0 or arr_b.size == 0:
+        return 0.0
+    return float(np.max(np.abs(arr_a - arr_b)))
 
 
 def compute_psnr(
@@ -60,6 +72,8 @@ def compute_psnr(
     Peak Signal-to-Noise Ratio (PSNR) in dB.
     If MSE < 1e-15, returns 100.0 dB (capped infinity).
     """
+    if np.asarray(a).size == 0 or np.asarray(b).size == 0:
+        return 100.0
     mse = compute_mse(a, b)
     if mse < 1e-15:
         return 100.0
@@ -83,6 +97,7 @@ def _convolve_2d_reflect(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
 
     # Fast convolution using sliding window views
     from numpy.lib.stride_tricks import sliding_window_view
+
     windows = sliding_window_view(padded, (kh, kw))
     return np.einsum("ijkl,kl->ij", windows, kernel)
 
@@ -101,11 +116,13 @@ def compute_ssim(
     arr_a = np.asarray(a, dtype=np.float64)
     arr_b = np.asarray(b, dtype=np.float64)
 
+    if arr_a.size == 0 or arr_b.size == 0:
+        return 1.0 if arr_a.size == arr_b.size else 0.0
+
     if arr_a.ndim == 3:
         # Multi-channel mean
         scores = [
-            compute_ssim(arr_a[:, :, c], arr_b[:, :, c], max_val, window_size, sigma)
-            for c in range(arr_a.shape[2])
+            compute_ssim(arr_a[:, :, c], arr_b[:, :, c], max_val, window_size, sigma) for c in range(arr_a.shape[2])
         ]
         return float(np.mean(scores))
 
@@ -156,6 +173,9 @@ def compute_ciede2000(
     CIEDE2000 Total Color Difference Delta E_00* (ISO/CIE 11664-6:2014).
     Evaluated in CIELAB (L*, a*, b*) space.
     """
+    if np.asarray(lab1).size == 0 or np.asarray(lab2).size == 0:
+        return 0.0
+
     arr1 = np.asarray(lab1, dtype=np.float64).reshape(-1, 3)
     arr2 = np.asarray(lab2, dtype=np.float64).reshape(-1, 3)
 
@@ -168,8 +188,8 @@ def compute_ciede2000(
     C_bar = 0.5 * (C1 + C2)
 
     # a' correction
-    C_bar7 = C_bar ** 7.0
-    G = 0.5 * (1.0 - np.sqrt(C_bar7 / (C_bar7 + (25.0 ** 7.0))))
+    C_bar7 = C_bar**7.0
+    G = 0.5 * (1.0 - np.sqrt(C_bar7 / (C_bar7 + (25.0**7.0))))
     a1_prime = (1.0 + G) * a1
     a2_prime = (1.0 + G) * a2
 
@@ -234,15 +254,15 @@ def compute_ciede2000(
 
     # Rotation factor R_T
     delta_theta = 30.0 * np.exp(-(((h_bar_prime - 275.0) / 25.0) ** 2.0))
-    C_bar_p7 = C_bar_prime ** 7.0
-    R_C = 2.0 * np.sqrt(C_bar_p7 / (C_bar_p7 + (25.0 ** 7.0)))
+    C_bar_p7 = C_bar_prime**7.0
+    R_C = 2.0 * np.sqrt(C_bar_p7 / (C_bar_p7 + (25.0**7.0)))
     R_T = -np.sin(np.radians(2.0 * delta_theta)) * R_C
 
     term_L = delta_L_prime / (k_L * S_L)
     term_C = delta_C_prime / (k_C * S_C)
     term_H = delta_H_prime / (k_H * S_H)
 
-    de00_sq = term_L ** 2.0 + term_C ** 2.0 + term_H ** 2.0 + R_T * term_C * term_H
+    de00_sq = term_L**2.0 + term_C**2.0 + term_H**2.0 + R_T * term_C * term_H
     de00 = np.sqrt(np.maximum(de00_sq, 0.0))
     return float(np.mean(de00))
 

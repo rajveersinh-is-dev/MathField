@@ -25,7 +25,6 @@ from mathfield.core.checkpoint.serializer import (
 
 class CheckpointCorruptError(ValueError):
     """Raised when a checkpoint file is missing, truncated, unparseable, or schema-incompatible."""
-    pass
 
 
 class CheckpointManager:
@@ -86,7 +85,7 @@ class CheckpointManager:
         2. Flush and fsync to guarantee physical disk synchronization.
         3. If target file already exists and create_backup is True, create .bak copy.
         4. Atomically rename/replace .tmp to target path using os.replace (MoveFileExW on Windows).
-        
+
         Supports both save(path, payload) and save(payload, path) argument orders.
         """
         if isinstance(arg1, dict) and not isinstance(arg2, dict):
@@ -134,7 +133,7 @@ class CheckpointManager:
                     break
                 except PermissionError as pe:
                     last_err = pe
-                    time.sleep(0.025 * (2 ** attempt))
+                    time.sleep(0.025 * (2**attempt))
 
             if last_err is not None:
                 raise last_err
@@ -187,7 +186,9 @@ class CheckpointManager:
             target = self._resolve_path(path_or_name)
         else:
             # Find latest checkpoint with a .bak file in checkpoint_dir
-            candidates = sorted(self.checkpoint_dir.glob(f"*{self.default_extension}.bak"), key=lambda p: p.stat().st_mtime)
+            candidates = sorted(
+                self.checkpoint_dir.glob(f"*{self.default_extension}.bak"), key=lambda p: p.stat().st_mtime
+            )
             if not candidates:
                 raise FileNotFoundError(f"No backup checkpoints found in {self.checkpoint_dir}")
             bak_path = candidates[-1]

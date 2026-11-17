@@ -8,7 +8,6 @@ continuous coordinate frames over arbitrary discrete image grids.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional, Tuple, Union
@@ -18,11 +17,12 @@ import numpy as np
 
 class DomainMode(str, Enum):
     """Spatial domain bounding mode."""
+
     ASPECT_PRESERVED = "aspect_preserved"
     UNIT_SQUARE = "unit_square"
     # Canonical aliases for E2E and UI compatibility:
-    ISOTROPIC = "aspect_preserved"
-    SQUARE = "unit_square"
+    ISOTROPIC = ASPECT_PRESERVED
+    SQUARE = UNIT_SQUARE
 
     @classmethod
     def from_str(cls, val: Union[str, DomainMode]) -> DomainMode:
@@ -41,6 +41,7 @@ class CoordinateDomain2D:
     """
     Continuous 2D bounding domain mapped onto a discrete image raster.
     """
+
     width: int
     height: int
     mode: DomainMode | str = DomainMode.ASPECT_PRESERVED
@@ -160,8 +161,11 @@ class CoordinateDomain2D:
         i_norm = (x_arr - self.x_min) / (self.x_max - self.x_min) * w_span
         j_norm = (y_arr - self.y_min) / (self.y_max - self.y_min) * h_span
 
-        i_disc = np.clip(np.round(i_norm), 0, self.width - 1).astype(int)
-        j_disc = np.clip(np.round(j_norm), 0, self.height - 1).astype(int)
+        i_safe = np.nan_to_num(i_norm, nan=0.0, posinf=float(self.width - 1), neginf=0.0)
+        j_safe = np.nan_to_num(j_norm, nan=0.0, posinf=float(self.height - 1), neginf=0.0)
+
+        i_disc = np.clip(np.round(i_safe), 0, self.width - 1).astype(int)
+        j_disc = np.clip(np.round(j_safe), 0, self.height - 1).astype(int)
 
         if np.isscalar(x) and np.isscalar(y):
             return int(i_disc), int(j_disc)

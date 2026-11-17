@@ -48,6 +48,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # SCENARIO 1: Portrait Photo Mathematical Reconstruction (High Complexity)
 # ==============================================================================
 
+
 class TestScenario01PortraitPhotoReconstruction:
     """
     Scenario 1: Portrait Photo Mathematical Reconstruction
@@ -63,9 +64,7 @@ class TestScenario01PortraitPhotoReconstruction:
       7. Export: PNG export and .mathfield JSON project file.
     """
 
-    def test_scenario_01_portrait_reconstruction_end_to_end(
-        self, synth_portrait: Path, e2e_temp_dir: Path
-    ) -> None:
+    def test_scenario_01_portrait_reconstruction_end_to_end(self, synth_portrait: Path, e2e_temp_dir: Path) -> None:
         from mathfield.core.basis import Chebyshev2D
         from mathfield.core.color import ColorSpaceConverter
         from mathfield.core.domain import CoordinateDomain2D
@@ -176,6 +175,7 @@ class TestScenario01PortraitPhotoReconstruction:
 # SCENARIO 2: Landscape Scene Multi-Scale Reconstruction (High Complexity)
 # ==============================================================================
 
+
 class TestScenario02LandscapeMultiScaleReconstruction:
     """
     Scenario 2: Landscape Scene Multi-Scale Reconstruction
@@ -189,9 +189,7 @@ class TestScenario02LandscapeMultiScaleReconstruction:
       5. JPG export with quality scaling.
     """
 
-    def test_scenario_02_landscape_multiscale_reconstruction(
-        self, synth_landscape: Path, e2e_temp_dir: Path
-    ) -> None:
+    def test_scenario_02_landscape_multiscale_reconstruction(self, synth_landscape: Path, e2e_temp_dir: Path) -> None:
         from mathfield.core.domain import CoordinateDomain2D
         from mathfield.core.image_analysis import ImageAnalyzer
         from mathfield.core.pipeline.mode_b import ModeBPipeline
@@ -210,11 +208,7 @@ class TestScenario02LandscapeMultiScaleReconstruction:
 
         # --- Stage 2 & 3: Mode B Maximum Fidelity Reconstruction (F2, F3, F5, F6, F7) ---
         dom = CoordinateDomain2D(w, h, mode="aspect_preserved")
-        ctx = PipelineContext(
-            image=img_arr,
-            domain=dom,
-            config={"max_depth": 3, "degree": 3, "split_threshold": 0.08}
-        )
+        ctx = PipelineContext(image=img_arr, domain=dom, config={"max_depth": 3, "degree": 3, "split_threshold": 0.08})
         pipe = ModeBPipeline()
         status = pipe.execute(ctx)
 
@@ -230,6 +224,7 @@ class TestScenario02LandscapeMultiScaleReconstruction:
         # --- Stage 4: Tiling & Memory Management (F15) ---
         try:
             from mathfield.core.engine.tiler import TiledReconstructionManager
+
             tiler = TiledReconstructionManager(tile_size=32)
             assert tiler is not None
         except (ImportError, ModuleNotFoundError):
@@ -238,6 +233,7 @@ class TestScenario02LandscapeMultiScaleReconstruction:
         # --- Stage 5: JPG Export (F23) ---
         try:
             from mathfield.export.raster import export_jpg
+
             jpg_path = e2e_temp_dir / "landscape_out.jpg"
             model = {
                 "coordinate_domain": {"width": w, "height": h},
@@ -253,6 +249,7 @@ class TestScenario02LandscapeMultiScaleReconstruction:
 # SCENARIO 3: Typography & High-Contrast Vector/Logo Recovery (High Complexity)
 # ==============================================================================
 
+
 class TestScenario03TypographyVectorLogoRecovery:
     """
     Scenario 3: Typography & High-Contrast Vector/Logo Recovery
@@ -266,9 +263,7 @@ class TestScenario03TypographyVectorLogoRecovery:
       5. Execute standalone script in clean subprocess; verify pixel MSE < 2.0.
     """
 
-    def test_scenario_03_typography_vector_logo_recovery(
-        self, synth_typography: Path, e2e_temp_dir: Path
-    ) -> None:
+    def test_scenario_03_typography_vector_logo_recovery(self, synth_typography: Path, e2e_temp_dir: Path) -> None:
         from mathfield.core.ast import parse
         from mathfield.core.codegen import generate_standalone_script
 
@@ -285,11 +280,7 @@ class TestScenario03TypographyVectorLogoRecovery:
         out_png = e2e_temp_dir / "typography_out.png"
 
         script_content = generate_standalone_script(
-            ast_integral,
-            params=[],
-            width=32,
-            height=32,
-            output_path=str(out_png)
+            ast_integral, params=[], width=32, height=32, output_path=str(out_png)
         )
         repro_script.write_text(script_content, encoding="utf-8")
 
@@ -316,6 +307,7 @@ class TestScenario03TypographyVectorLogoRecovery:
         # SVG Export check (F24)
         try:
             from mathfield.export.svg import export_svg
+
             svg_path = e2e_temp_dir / "typography.svg"
             export_svg({"expressions": {"integral": "sin(pi * x)"}}, svg_path)
             info = inspect_svg(svg_path)
@@ -327,6 +319,7 @@ class TestScenario03TypographyVectorLogoRecovery:
 # ==============================================================================
 # SCENARIO 4: Scientific 2D Scalar Field Reconstruction (High Complexity)
 # ==============================================================================
+
 
 class TestScenario04ScientificScalarFieldReconstruction:
     """
@@ -354,15 +347,18 @@ class TestScenario04ScientificScalarFieldReconstruction:
 
         # True analytical vorticity dipole:
         # w(x,y) = exp(-((x-0.3)^2+y^2)/0.1) - exp(-((x+0.3)^2+y^2)/0.1)
-        vortex_pos = np.exp(-((X - 0.3) ** 2 + Y ** 2) / 0.10)
-        vortex_neg = np.exp(-((X + 0.3) ** 2 + Y ** 2) / 0.10)
+        vortex_pos = np.exp(-((X - 0.3) ** 2 + Y**2) / 0.10)
+        vortex_neg = np.exp(-((X + 0.3) ** 2 + Y**2) / 0.10)
         w_field = vortex_pos - vortex_neg
 
         # Separable model with nonlinear parameter theta = vortex center offset x0
-        basis_fn = lambda theta, X, Y: np.column_stack([
-            np.exp(-((X.ravel() - theta[0]) ** 2 + Y.ravel() ** 2) / 0.10),
-            np.exp(-((X.ravel() + theta[0]) ** 2 + Y.ravel() ** 2) / 0.10),
-        ])
+        def basis_fn(theta, X, Y):
+            return np.column_stack(
+                [
+                    np.exp(-((X.ravel() - theta[0]) ** 2 + Y.ravel() ** 2) / 0.10),
+                    np.exp(-((X.ravel() + theta[0]) ** 2 + Y.ravel() ** 2) / 0.10),
+                ]
+            )
 
         opt = VarProOptimizer(max_iter=30)
         # Initial guess for vortex center offset x0 = 0.20 (truth = 0.30)
@@ -380,6 +376,7 @@ class TestScenario04ScientificScalarFieldReconstruction:
         # Export CSV Parameter Table (F27)
         try:
             from mathfield.export.csv_export import export_csv_parameters
+
             csv_path = e2e_temp_dir / "scalar_field_params.csv"
             sample_model = {
                 "parameters": {
@@ -397,6 +394,7 @@ class TestScenario04ScientificScalarFieldReconstruction:
         # PDF Report Compilation (F26)
         try:
             from mathfield.export.pdf_report import export_pdf_report
+
             pdf_path = e2e_temp_dir / "scalar_field_report.pdf"
             export_pdf_report(
                 {
@@ -417,6 +415,7 @@ class TestScenario04ScientificScalarFieldReconstruction:
 # ==============================================================================
 # SCENARIO 5: Zero-Dependency Standalone Python Script Execution (Medium Complexity)
 # ==============================================================================
+
 
 class TestScenario05ZeroDependencyStandaloneScript:
     """
@@ -443,13 +442,7 @@ class TestScenario05ZeroDependencyStandaloneScript:
         script_path = e2e_temp_dir / "reproduce_harmonic.py"
         out_img = e2e_temp_dir / "reproduce_out.png"
 
-        script_code = generate_standalone_script(
-            ast_node,
-            params=[],
-            width=64,
-            height=64,
-            output_path=str(out_img)
-        )
+        script_code = generate_standalone_script(ast_node, params=[], width=64, height=64, output_path=str(out_img))
         script_path.write_text(script_code, encoding="utf-8")
 
         # --- AST Security & Purity Audit ---
@@ -496,6 +489,7 @@ class TestScenario05ZeroDependencyStandaloneScript:
 # ==============================================================================
 # SCENARIO 6: Publication-Grade Mathematical PDF Report Compilation (Medium Complexity)
 # ==============================================================================
+
 
 class TestScenario06PublicationGradePDFReportCompilation:
     """
@@ -572,6 +566,7 @@ class TestScenario06PublicationGradePDFReportCompilation:
 # SCENARIO 7: Job Checkpointing Interruption & Bit-Exact Recovery (Medium Complexity)
 # ==============================================================================
 
+
 class TestScenario07JobCheckpointingBitExactRecovery:
     """
     Scenario 7: Job Checkpointing Interruption & Bit-Exact Recovery
@@ -586,9 +581,7 @@ class TestScenario07JobCheckpointingBitExactRecovery:
       6. Assert bit-for-bit identical final loss and parameters (|L_resumed - L_baseline| == 0.0).
     """
 
-    def test_scenario_07_job_checkpointing_bit_exact_recovery(
-        self, synth_rbf: Path, e2e_temp_dir: Path
-    ) -> None:
+    def test_scenario_07_job_checkpointing_bit_exact_recovery(self, synth_rbf: Path, e2e_temp_dir: Path) -> None:
         # Checkpoint module import guard (M3)
         try:
             from mathfield.core.checkpoint import CheckpointManager
@@ -601,30 +594,30 @@ class TestScenario07JobCheckpointingBitExactRecovery:
         # 1. Deterministic synthetic optimization task
         seed = 42
         x_target = np.linspace(-1.0, 1.0, 16)
-        y_target = 0.5 * x_target ** 2 + 0.2
+        y_target = 0.5 * x_target**2 + 0.2
 
         # Model: a * x^2 + b. Target: a = 0.5, b = 0.2
         # Baseline run (50 iterations)
         rng_base = np.random.default_rng(seed)
         params_base = np.array([1.0, 0.0], dtype=np.float64)  # [a, b]
         lr = 0.05
-        for it in range(50):
+        for _ in range(50):
             noise = rng_base.normal(0.0, 0.001, size=params_base.shape)
-            pred = params_base[0] * (x_target ** 2) + params_base[1]
-            grad_a = np.mean(2.0 * (pred - y_target) * (x_target ** 2))
+            pred = params_base[0] * (x_target**2) + params_base[1]
+            grad_a = np.mean(2.0 * (pred - y_target) * (x_target**2))
             grad_b = np.mean(2.0 * (pred - y_target))
             params_base -= lr * np.array([grad_a, grad_b]) + noise
 
-        loss_base = float(np.mean((params_base[0] * (x_target ** 2) + params_base[1] - y_target) ** 2))
+        loss_base = float(np.mean((params_base[0] * (x_target**2) + params_base[1] - y_target) ** 2))
         hex_base = [float(p).hex() for p in params_base]
 
         # 2. Interrupted run (25 iterations, checkpoint save)
         rng_int = np.random.default_rng(seed)
         params_int = np.array([1.0, 0.0], dtype=np.float64)
-        for it in range(25):
+        for _ in range(25):
             noise = rng_int.normal(0.0, 0.001, size=params_int.shape)
-            pred = params_int[0] * (x_target ** 2) + params_int[1]
-            grad_a = np.mean(2.0 * (pred - y_target) * (x_target ** 2))
+            pred = params_int[0] * (x_target**2) + params_int[1]
+            grad_a = np.mean(2.0 * (pred - y_target) * (x_target**2))
             grad_b = np.mean(2.0 * (pred - y_target))
             params_int -= lr * np.array([grad_a, grad_b]) + noise
 
@@ -651,14 +644,14 @@ class TestScenario07JobCheckpointingBitExactRecovery:
         resumed_rng.bit_generator.state = loaded_state["rng_state"]
 
         # Resume iterations from 25 to 50
-        for it in range(25, 50):
+        for _ in range(25, 50):
             noise = resumed_rng.normal(0.0, 0.001, size=restored_params.shape)
-            pred = restored_params[0] * (x_target ** 2) + restored_params[1]
-            grad_a = np.mean(2.0 * (pred - y_target) * (x_target ** 2))
+            pred = restored_params[0] * (x_target**2) + restored_params[1]
+            grad_a = np.mean(2.0 * (pred - y_target) * (x_target**2))
             grad_b = np.mean(2.0 * (pred - y_target))
             restored_params -= lr * np.array([grad_a, grad_b]) + noise
 
-        loss_resumed = float(np.mean((restored_params[0] * (x_target ** 2) + restored_params[1] - y_target) ** 2))
+        loss_resumed = float(np.mean((restored_params[0] * (x_target**2) + restored_params[1] - y_target) ** 2))
         hex_resumed = [float(p).hex() for p in restored_params]
 
         # 4. Bit-Exact Recovery Invariant

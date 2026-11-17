@@ -16,7 +16,6 @@ import io
 import json
 import math
 import os
-import re
 import subprocess
 import sys
 import time
@@ -35,17 +34,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # CLI Execution Subprocess Runner
 # ============================================================================
 
+
 class CliResult:
     """Encapsulates the result of a CLI subprocess invocation."""
 
-    def __init__(
-        self,
-        exit_code: int,
-        stdout: str,
-        stderr: str,
-        duration: float,
-        cmd: List[str]
-    ) -> None:
+    def __init__(self, exit_code: int, stdout: str, stderr: str, duration: float, cmd: List[str]) -> None:
         self.exit_code = exit_code
         self.stdout = stdout
         self.stderr = stderr
@@ -96,7 +89,7 @@ def kill_process_tree(pid: int) -> None:
                 ["taskkill", "/F", "/T", "/PID", str(pid)],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                check=False
+                check=False,
             )
             return
         except Exception:
@@ -104,6 +97,7 @@ def kill_process_tree(pid: int) -> None:
 
     try:
         import psutil
+
         parent = psutil.Process(pid)
         children = parent.children(recursive=True)
         for child in children:
@@ -127,7 +121,7 @@ def run_cli(
     timeout: float = 120.0,
     cwd: Optional[Union[str, Path]] = None,
     env: Optional[Dict[str, str]] = None,
-    python_exe: str = sys.executable
+    python_exe: str = sys.executable,
 ) -> CliResult:
     """
     Executes MathField CLI (cli.py) in a headless subprocess with timeout protection
@@ -152,7 +146,7 @@ def run_cli(
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
-        errors="replace"
+        errors="replace",
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
@@ -166,19 +160,17 @@ def run_cli(
             stdout, stderr = proc.communicate(timeout=2.0)
         except Exception:
             if proc.stdout:
-                try: proc.stdout.close()
-                except Exception: pass
+                try:
+                    proc.stdout.close()
+                except Exception:
+                    pass
             if proc.stderr:
-                try: proc.stderr.close()
-                except Exception: pass
+                try:
+                    proc.stderr.close()
+                except Exception:
+                    pass
             stdout, stderr = "", ""
-        return CliResult(
-            -1,
-            stdout,
-            f"Command timed out after {timeout} seconds: {exc}\n{stderr}",
-            duration,
-            cmd
-        )
+        return CliResult(-1, stdout, f"Command timed out after {timeout} seconds: {exc}\n{stderr}", duration, cmd)
     except Exception as exc:
         duration = time.perf_counter() - start_time
         kill_process_tree(proc.pid)
@@ -190,7 +182,7 @@ def run_standalone_script(
     args: Optional[List[str]] = None,
     timeout: float = 30.0,
     cwd: Optional[Union[str, Path]] = None,
-    python_exe: str = sys.executable
+    python_exe: str = sys.executable,
 ) -> CliResult:
     """
     Executes a standalone generated Python script in an isolated subprocess with
@@ -212,7 +204,7 @@ def run_standalone_script(
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
-        errors="replace"
+        errors="replace",
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
@@ -225,11 +217,15 @@ def run_standalone_script(
             stdout, stderr = proc.communicate(timeout=2.0)
         except Exception:
             if proc.stdout:
-                try: proc.stdout.close()
-                except Exception: pass
+                try:
+                    proc.stdout.close()
+                except Exception:
+                    pass
             if proc.stderr:
-                try: proc.stderr.close()
-                except Exception: pass
+                try:
+                    proc.stderr.close()
+                except Exception:
+                    pass
             stdout, stderr = "", ""
         return CliResult(-1, stdout, f"Standalone script timed out after {timeout}s: {exc}", duration, cmd)
     except Exception as exc:
@@ -242,10 +238,9 @@ def run_standalone_script(
 # File Format Inspectors & Validators
 # ============================================================================
 
+
 def inspect_png(
-    path: Union[str, Path],
-    expected_shape: Optional[Tuple[int, int]] = None,
-    has_alpha: Optional[bool] = None
+    path: Union[str, Path], expected_shape: Optional[Tuple[int, int]] = None, has_alpha: Optional[bool] = None
 ) -> Dict[str, Any]:
     """
     Validates PNG header (magic bytes: 89 50 4E 47 0D 0A 1A 0A).
@@ -270,16 +265,14 @@ def inspect_png(
     mode = img.mode
     arr = np.array(img)
 
-    actual_has_alpha = ("A" in mode)
+    actual_has_alpha = "A" in mode
     variance = float(np.var(arr))
 
-    if expected_shape is not None:
-        if (width, height) != expected_shape and (height, width) != expected_shape:
-            raise AssertionError(f"Expected image dimensions {expected_shape}, got ({width}, {height})")
+    if expected_shape is not None and (width, height) != expected_shape and (height, width) != expected_shape:
+        raise AssertionError(f"Expected image dimensions {expected_shape}, got ({width}, {height})")
 
-    if has_alpha is not None:
-        if actual_has_alpha != has_alpha:
-            raise AssertionError(f"Expected has_alpha={has_alpha}, got mode {mode}")
+    if has_alpha is not None and actual_has_alpha != has_alpha:
+        raise AssertionError(f"Expected has_alpha={has_alpha}, got mode {mode}")
 
     return {
         "width": width,
@@ -292,10 +285,7 @@ def inspect_png(
     }
 
 
-def inspect_jpg(
-    path: Union[str, Path],
-    min_quality_check: bool = False
-) -> Dict[str, Any]:
+def inspect_jpg(path: Union[str, Path], min_quality_check: bool = False) -> Dict[str, Any]:
     """
     Validates JPEG SOI (FF D8) and EOI (FF D9).
     Loads with Pillow; returns dict:
@@ -382,10 +372,7 @@ def inspect_svg(path: Union[str, Path]) -> Dict[str, Any]:
     }
 
 
-def inspect_json_project(
-    path: Union[str, Path],
-    schema_dict: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+def inspect_json_project(path: Union[str, Path], schema_dict: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Parses JSON project file (.mathfield).
     Validates schema compliance and required keys.
@@ -404,15 +391,13 @@ def inspect_json_project(
     has_ver = ("schema_version" in data) or ("version" in data)
     has_domain = ("coordinate_domain" in data) or ("domain" in data)
     has_model = ("global_model" in data) or ("expressions" in data)
-    has_metrics = ("final_metrics" in data) or ("metrics" in data)
 
     if not (has_ver and has_domain and has_model):
-        raise ValueError(
-            f"Project JSON missing mandatory keys. Present: {list(data.keys())}"
-        )
+        raise ValueError(f"Project JSON missing mandatory keys. Present: {list(data.keys())}")
 
     if schema_dict is not None:
         import jsonschema
+
         jsonschema.validate(instance=data, schema=schema_dict)
 
     param_count = 0
@@ -452,9 +437,7 @@ def inspect_csv_parameters(path: Union[str, Path]) -> List[Dict[str, Any]]:
                 break
 
         if val_col is None:
-            raise ValueError(
-                f"CSV header missing parameter value column. Found: {reader.fieldnames}"
-            )
+            raise ValueError(f"CSV header missing parameter value column. Found: {reader.fieldnames}")
 
         for row in reader:
             raw_val = row[val_col]
@@ -463,7 +446,7 @@ def inspect_csv_parameters(path: Union[str, Path]) -> List[Dict[str, Any]]:
                 if not math.isfinite(num_val):
                     raise ValueError(f"Non-finite float value in CSV: {raw_val}")
             except ValueError as exc:
-                raise ValueError(f"Could not parse float value '{raw_val}': {exc}")
+                raise ValueError(f"Could not parse float value '{raw_val}': {exc}") from exc
             rows.append(row)
 
     if len(rows) == 0:
@@ -492,6 +475,7 @@ def inspect_pdf_report(path: Union[str, Path]) -> Dict[str, Any]:
     # Try PyMuPDF (fitz)
     try:
         import fitz
+
         doc = fitz.open(stream=content, filetype="pdf")
         page_count = len(doc)
         for page in doc:
@@ -500,6 +484,7 @@ def inspect_pdf_report(path: Union[str, Path]) -> Dict[str, Any]:
     except ImportError:
         # Fallback to pypdf
         import pypdf
+
         reader = pypdf.PdfReader(io.BytesIO(content))
         page_count = len(reader.pages)
         for page in reader.pages:
@@ -540,15 +525,9 @@ def inspect_latex_doc(path: Union[str, Path]) -> Dict[str, Any]:
     open_braces = text.count("{")
     close_braces = text.count("}")
     if open_braces != close_braces:
-        raise ValueError(
-            f"Unbalanced braces in LaTeX document: {open_braces} open vs {close_braces} close."
-        )
+        raise ValueError(f"Unbalanced braces in LaTeX document: {open_braces} open vs {close_braces} close.")
 
-    eq_count = (
-        text.count("\\begin{equation}") +
-        text.count("\\begin{align}") +
-        text.count("\\[")
-    )
+    eq_count = text.count("\\begin{equation}") + text.count("\\begin{align}") + text.count("\\[")
     tables_count = text.count("\\begin{tabular}") + text.count("\\begin{table}")
     lines = text.splitlines()
 
@@ -582,9 +561,7 @@ def inspect_checkpoint(path: Union[str, Path]) -> Dict[str, Any]:
     has_iter = "iteration" in data or "iter" in data
 
     if not (has_ver and has_stage and has_iter):
-        raise ValueError(
-            f"Checkpoint missing required metadata keys. Keys: {list(data.keys())}"
-        )
+        raise ValueError(f"Checkpoint missing required metadata keys. Keys: {list(data.keys())}")
 
     # Verify hex float parameters if present
     params = data.get("parameters", {})
@@ -624,7 +601,9 @@ def assert_no_memorized_arrays(model_data: Any, max_param_count: int = 32) -> No
 
         elif isinstance(obj, dict):
             if len(obj) > 64:
-                raise AssertionError(f"Anti-memorization violation at {path}: dict has too many entries ({len(obj)} > 64)")
+                raise AssertionError(
+                    f"Anti-memorization violation at {path}: dict has too many entries ({len(obj)} > 64)"
+                )
             for k, v in obj.items():
                 if any(kw in str(k).lower() for kw in FORBIDDEN_KEYWORDS):
                     raise AssertionError(f"Anti-memorization violation at {path}: key '{k}' matches forbidden keyword")
@@ -633,7 +612,9 @@ def assert_no_memorized_arrays(model_data: Any, max_param_count: int = 32) -> No
         elif isinstance(obj, str):
             for kw in FORBIDDEN_KEYWORDS:
                 if kw in obj.lower():
-                    raise AssertionError(f"Anti-memorization violation at {path}: string contains forbidden keyword '{kw}'")
+                    raise AssertionError(
+                        f"Anti-memorization violation at {path}: string contains forbidden keyword '{kw}'"
+                    )
             _check_formula_ast(obj, path)
 
     def _check_formula_ast(formula_str: str, path: str) -> None:
@@ -653,12 +634,12 @@ def assert_no_memorized_arrays(model_data: Any, max_param_count: int = 32) -> No
                         raise AssertionError(
                             f"Anti-memorization violation at {path}: formula AST contains dict literal"
                         )
-            except SyntaxError:
+            except SyntaxError as exc:
                 clean = formula_str.strip()
-                if clean.startswith("[") or clean.startswith("{"):
+                if clean.startswith(("[", "{")):
                     raise AssertionError(
                         f"Anti-memorization violation at {path}: formula starts with literal array delimiter: {clean[:20]}"
-                    )
+                    ) from exc
 
     _traverse(model_data)
 
@@ -668,7 +649,7 @@ def validate_standalone_python_script(
     test_execution: bool = False,
     output_image_path: Optional[Union[str, Path]] = None,
     max_array_elements: int = 32,
-    max_byte_length: int = 64
+    max_byte_length: int = 64,
 ) -> Dict[str, Any]:
     """
     Audits a standalone reproduction script for strict mathematical purity and sandbox security:
@@ -687,13 +668,36 @@ def validate_standalone_python_script(
     tree = py_ast.parse(code, filename=str(p))
 
     FORBIDDEN_CALL_NAMES = {
-        "eval", "exec", "compile", "__import__", "open",
-        "globals", "locals", "vars", "getattr", "setattr", "delattr"
+        "eval",
+        "exec",
+        "compile",
+        "__import__",
+        "open",
+        "globals",
+        "locals",
+        "vars",
+        "getattr",
+        "setattr",
+        "delattr",
     }
     FORBIDDEN_ATTRS = {"eval", "exec", "__builtins__"}
     FORBIDDEN_MODULES = {
-        "mathfield", "builtins", "__builtin__", "importlib", "pickle",
-        "ctypes", "subprocess", "socket", "base64", "zlib", "gzip", "bz2", "lzma", "marshal", "urllib", "requests"
+        "mathfield",
+        "builtins",
+        "__builtin__",
+        "importlib",
+        "pickle",
+        "ctypes",
+        "subprocess",
+        "socket",
+        "base64",
+        "zlib",
+        "gzip",
+        "bz2",
+        "lzma",
+        "marshal",
+        "urllib",
+        "requests",
     }
     FORBIDDEN_LITERAL_STRS = {"eval", "exec", "__import__", "mathfield"}
 
@@ -706,42 +710,64 @@ def validate_standalone_python_script(
                 imports.append(alias.name)
                 mod = alias.name.split(".")[0]
                 if mod in FORBIDDEN_MODULES:
-                    raise AssertionError(f"Standalone script violates security/independence rule: imports '{alias.name}'")
+                    raise AssertionError(
+                        f"Standalone script violates security/independence rule: imports '{alias.name}'"
+                    )
         elif isinstance(node, py_ast.ImportFrom):
             if node.module:
                 imports.append(node.module)
                 mod = node.module.split(".")[0]
                 if mod in FORBIDDEN_MODULES:
-                    raise AssertionError(f"Standalone script violates security/independence rule: imports from '{node.module}'")
+                    raise AssertionError(
+                        f"Standalone script violates security/independence rule: imports from '{node.module}'"
+                    )
 
         # 2. Function & Method Calls Check
         elif isinstance(node, py_ast.Call):
             if isinstance(node.func, py_ast.Name):
                 if node.func.id in FORBIDDEN_CALL_NAMES:
                     raise AssertionError(f"Standalone script violates security rule: forbidden call '{node.func.id}()'")
-            elif isinstance(node.func, py_ast.Attribute):
-                if node.func.attr in FORBIDDEN_ATTRS or node.func.attr == "import_module":
-                    raise AssertionError(f"Standalone script violates security rule: forbidden attribute call '.{node.func.attr}()'")
+            elif isinstance(node.func, py_ast.Attribute) and (
+                node.func.attr in FORBIDDEN_ATTRS or node.func.attr == "import_module"
+            ):
+                raise AssertionError(
+                    f"Standalone script violates security rule: forbidden attribute call '.{node.func.attr}()'"
+                )
 
             # Check getattr(builtins, 'eval')
-            if isinstance(node.func, py_ast.Name) and node.func.id == "getattr":
-                if len(node.args) >= 2 and isinstance(node.args[1], py_ast.Constant):
-                    if node.args[1].value in FORBIDDEN_LITERAL_STRS:
-                        raise AssertionError(f"Standalone script violates security rule: indirect getattr call on '{node.args[1].value}'")
-                for kw in node.keywords:
-                    if kw.arg == "name" and isinstance(kw.value, py_ast.Constant):
-                        if kw.value.value in FORBIDDEN_LITERAL_STRS:
-                            raise AssertionError(f"Standalone script violates security rule: indirect getattr call on '{kw.value.value}'")
+            if (
+                isinstance(node.func, py_ast.Name)
+                and node.func.id == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[1], py_ast.Constant)
+                and node.args[1].value in FORBIDDEN_LITERAL_STRS
+            ):
+                raise AssertionError(
+                    f"Standalone script violates security rule: indirect getattr call on '{node.args[1].value}'"
+                )
+            for kw in node.keywords:
+                if (
+                    kw.arg == "name"
+                    and isinstance(kw.value, py_ast.Constant)
+                    and kw.value.value in FORBIDDEN_LITERAL_STRS
+                ):
+                    raise AssertionError(
+                        f"Standalone script violates security rule: indirect getattr call on '{kw.value.value}'"
+                    )
 
         # 3. Attribute Access Check (e.g. builtins.__dict__, builtins.eval)
         elif isinstance(node, py_ast.Attribute):
             if node.attr in FORBIDDEN_ATTRS:
-                raise AssertionError(f"Standalone script violates security rule: forbidden attribute access '.{node.attr}'")
+                raise AssertionError(
+                    f"Standalone script violates security rule: forbidden attribute access '.{node.attr}'"
+                )
 
         # 4. Subscript / Dictionary Lookups (e.g. builtins.__dict__['exec'])
         elif isinstance(node, py_ast.Subscript):
             if isinstance(node.slice, py_ast.Constant) and node.slice.value in FORBIDDEN_LITERAL_STRS:
-                raise AssertionError(f"Standalone script violates security rule: dictionary lookup for '{node.slice.value}'")
+                raise AssertionError(
+                    f"Standalone script violates security rule: dictionary lookup for '{node.slice.value}'"
+                )
 
         # 5. Raw Memorized Arrays & Lookup Tables Check
         elif isinstance(node, (py_ast.List, py_ast.Tuple)):
@@ -765,9 +791,17 @@ def validate_standalone_python_script(
         # 6. Array & Bytes Multiplications Check (e.g. [0] * 2000, b'\x00' * 100)
         elif isinstance(node, py_ast.BinOp) and isinstance(node.op, py_ast.Mult):
             mult_len = None
-            if isinstance(node.left, (py_ast.List, py_ast.Tuple)) and isinstance(node.right, py_ast.Constant) and isinstance(node.right.value, int):
+            if (
+                isinstance(node.left, (py_ast.List, py_ast.Tuple))
+                and isinstance(node.right, py_ast.Constant)
+                and isinstance(node.right.value, int)
+            ):
                 mult_len = len(node.left.elts) * node.right.value
-            elif isinstance(node.right, (py_ast.List, py_ast.Tuple)) and isinstance(node.left, py_ast.Constant) and isinstance(node.left.value, int):
+            elif (
+                isinstance(node.right, (py_ast.List, py_ast.Tuple))
+                and isinstance(node.left, py_ast.Constant)
+                and isinstance(node.left.value, int)
+            ):
                 mult_len = len(node.right.elts) * node.left.value
             if mult_len is not None and mult_len > max_array_elements:
                 raise AssertionError(
@@ -775,9 +809,19 @@ def validate_standalone_python_script(
                 )
 
             mult_bytes = None
-            if isinstance(node.left, py_ast.Constant) and isinstance(node.left.value, bytes) and isinstance(node.right, py_ast.Constant) and isinstance(node.right.value, int):
+            if (
+                isinstance(node.left, py_ast.Constant)
+                and isinstance(node.left.value, bytes)
+                and isinstance(node.right, py_ast.Constant)
+                and isinstance(node.right.value, int)
+            ):
                 mult_bytes = len(node.left.value) * node.right.value
-            elif isinstance(node.right, py_ast.Constant) and isinstance(node.right.value, bytes) and isinstance(node.left, py_ast.Constant) and isinstance(node.left.value, int):
+            elif (
+                isinstance(node.right, py_ast.Constant)
+                and isinstance(node.right.value, bytes)
+                and isinstance(node.left, py_ast.Constant)
+                and isinstance(node.left.value, int)
+            ):
                 mult_bytes = len(node.right.value) * node.left.value
             if mult_bytes is not None and mult_bytes > max_byte_length:
                 raise AssertionError(
@@ -785,20 +829,15 @@ def validate_standalone_python_script(
                 )
 
         # 7. Constant Binary Payloads Check
-        elif isinstance(node, py_ast.Constant):
-            if isinstance(node.value, bytes) and len(node.value) > max_byte_length:
-                raise AssertionError(
-                    f"Standalone script violates anti-memorization rule: byte constant exceeds {max_byte_length} bytes (len={len(node.value)})"
-                )
+        elif isinstance(node, py_ast.Constant) and isinstance(node.value, bytes) and len(node.value) > max_byte_length:
+            raise AssertionError(
+                f"Standalone script violates anti-memorization rule: byte constant exceeds {max_byte_length} bytes (len={len(node.value)})"
+            )
 
     output_valid = False
     if test_execution:
         out_target = output_image_path or (p.parent / "standalone_test_out.png")
-        cli_res = run_standalone_script(
-            p,
-            args=["--output", str(out_target), "--resolution", "32", "32"],
-            timeout=30.0
-        )
+        cli_res = run_standalone_script(p, args=["--output", str(out_target), "--resolution", "32", "32"], timeout=30.0)
         cli_res.assert_success("Standalone script execution failed in isolated environment.")
         if not Path(out_target).exists():
             raise AssertionError(f"Standalone script did not generate expected output at {out_target}")
@@ -815,10 +854,7 @@ def validate_standalone_python_script(
     }
 
 
-def validate_reproducibility_package(
-    bundle_path: Union[str, Path],
-    test_verify_script: bool = False
-) -> Dict[str, Any]:
+def validate_reproducibility_package(bundle_path: Union[str, Path], test_verify_script: bool = False) -> Dict[str, Any]:
     """
     Validates a standalone reproducibility package bundle (.zip or directory).
     Checks for all 7 required assets:
@@ -882,6 +918,7 @@ validate_latex_export = inspect_latex_doc
 # Independent Reference Mathematical Metrics (Pure NumPy)
 # ============================================================================
 
+
 def compute_reference_mse(a: np.ndarray, b: np.ndarray) -> float:
     """Computes Mean Squared Error (MSE) independently using float64."""
     arr_a = a.astype(np.float64)
@@ -894,7 +931,7 @@ def compute_reference_psnr(a: np.ndarray, b: np.ndarray, max_val: float = 255.0)
     mse = compute_reference_mse(a, b)
     if mse == 0.0:
         return float("inf")
-    return float(10.0 * np.log10((max_val ** 2) / mse))
+    return float(10.0 * np.log10((max_val**2) / mse))
 
 
 def compute_reference_mae(a: np.ndarray, b: np.ndarray) -> float:
@@ -908,11 +945,7 @@ def compute_reference_max_error(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def compute_reference_ssim(
-    img1: np.ndarray,
-    img2: np.ndarray,
-    K1: float = 0.01,
-    K2: float = 0.03,
-    L: float = 255.0
+    img1: np.ndarray, img2: np.ndarray, K1: float = 0.01, K2: float = 0.03, L: float = 255.0
 ) -> float:
     """
     Computes Structural Similarity Index (SSIM) using standard Gaussian spatial weighting.
@@ -933,9 +966,7 @@ def compute_reference_ssim(
         s1_sq = gaussian_filter(c1 * c1, sigma) - mu1_sq
         s2_sq = gaussian_filter(c2 * c2, sigma) - mu2_sq
         s12 = gaussian_filter(c1 * c2, sigma) - mu1_mu2
-        ssim_map = ((2.0 * mu1_mu2 + C1) * (2.0 * s12 + C2)) / (
-            (mu1_sq + mu2_sq + C1) * (s1_sq + s2_sq + C2)
-        )
+        ssim_map = ((2.0 * mu1_mu2 + C1) * (2.0 * s12 + C2)) / ((mu1_sq + mu2_sq + C1) * (s1_sq + s2_sq + C2))
         return float(np.mean(ssim_map))
 
     if im1.ndim == 3:
@@ -961,15 +992,15 @@ def compute_ciede2000(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
     a2 = lab2[:, :, 1].astype(np.float64)
     b2 = lab2[:, :, 2].astype(np.float64)
 
-    C1 = np.sqrt(a1 ** 2 + b1 ** 2)
-    C2 = np.sqrt(a2 ** 2 + b2 ** 2)
+    C1 = np.sqrt(a1**2 + b1**2)
+    C2 = np.sqrt(a2**2 + b2**2)
     C_bar = 0.5 * (C1 + C2)
-    G = 0.5 * (1.0 - np.sqrt((C_bar ** 7) / (C_bar ** 7 + 25.0 ** 7 + 1e-12)))
+    G = 0.5 * (1.0 - np.sqrt((C_bar**7) / (C_bar**7 + 25.0**7 + 1e-12)))
 
     a1_p = (1.0 + G) * a1
     a2_p = (1.0 + G) * a2
-    C1_p = np.sqrt(a1_p ** 2 + b1 ** 2)
-    C2_p = np.sqrt(a2_p ** 2 + b2 ** 2)
+    C1_p = np.sqrt(a1_p**2 + b1**2)
+    C2_p = np.sqrt(a2_p**2 + b2**2)
 
     h1_p = np.degrees(np.arctan2(b1, a1_p)) % 360.0
     h2_p = np.degrees(np.arctan2(b2, a2_p)) % 360.0
@@ -989,7 +1020,7 @@ def compute_ciede2000(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
     h_bar_p = np.where(
         np.abs(h1_p - h2_p) > 180.0,
         np.where((h1_p + h2_p) < 360.0, 0.5 * (h1_p + h2_p + 360.0), 0.5 * (h1_p + h2_p - 360.0)),
-        0.5 * (h1_p + h2_p)
+        0.5 * (h1_p + h2_p),
     )
     h_bar_p = np.where((C1_p * C2_p) == 0.0, h1_p + h2_p, h_bar_p)
 
@@ -1002,7 +1033,7 @@ def compute_ciede2000(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
     )
 
     delta_theta = 30.0 * np.exp(-(((h_bar_p - 275.0) / 25.0) ** 2))
-    R_C = 2.0 * np.sqrt((C_bar_p ** 7) / (C_bar_p ** 7 + 25.0 ** 7 + 1e-12))
+    R_C = 2.0 * np.sqrt((C_bar_p**7) / (C_bar_p**7 + 25.0**7 + 1e-12))
     S_L = 1.0 + (0.015 * ((L_bar_p - 50.0) ** 2)) / np.sqrt(20.0 + ((L_bar_p - 50.0) ** 2))
     S_C = 1.0 + 0.045 * C_bar_p
     S_H = 1.0 + 0.015 * C_bar_p * T

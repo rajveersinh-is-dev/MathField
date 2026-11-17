@@ -56,11 +56,7 @@ def export_latex_report(
     if global_eqs:
         for ch, eq_str in global_eqs.items():
             clean_eq = eq_str.replace("·", " \\cdot ").replace("_", "\\_")
-            global_blocks.append(
-                f"\\begin{{equation}}\n"
-                f"  G_{{{ch}}}(x, y) = \\text{{{clean_eq}}}\n"
-                f"\\end{{equation}}"
-            )
+            global_blocks.append(f"\\begin{{equation}}\n  G_{{{ch}}}(x, y) = \\text{{{clean_eq}}}\n\\end{{equation}}")
     elif expressions:
         for ch, expr in expressions.items():
             if isinstance(expr, str) and expr.strip():
@@ -69,11 +65,7 @@ def export_latex_report(
                     latex_str = to_latex(ast_node)
                 except Exception:
                     latex_str = expr.replace("_", "\\_")
-                global_blocks.append(
-                    f"\\begin{{equation}}\n"
-                    f"  {ch}(x, y) = {latex_str}\n"
-                    f"\\end{{equation}}"
-                )
+                global_blocks.append(f"\\begin{{equation}}\n  {ch}(x, y) = {latex_str}\n\\end{{equation}}")
     if not global_blocks:
         global_blocks.append(
             "\\begin{equation}\n"

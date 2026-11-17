@@ -3,7 +3,9 @@ Unit tests for the O(N) Pratt parser, precedence climbing, and sandbox security.
 """
 
 import math
+
 import pytest
+
 from mathfield.core.ast.nodes import (
     BinaryOpNode,
     ConstantNode,
@@ -179,4 +181,3 @@ def test_implicit_multiplication_edge_cases():
     # p0 theta1 -> p0 * theta1
     t4 = parse("p0 theta1")
     assert t4 == parse("p0 * theta1")
-

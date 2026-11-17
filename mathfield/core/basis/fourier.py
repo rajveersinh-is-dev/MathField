@@ -66,9 +66,7 @@ class Fourier2D(BasisFunction2D):
         if coefficients is not None:
             c = np.asarray(coefficients, dtype=np.float64).ravel()
             if len(c) != self._num_terms:
-                raise ValueError(
-                    f"Coefficients length {len(c)} does not match number of basis terms {self._num_terms}"
-                )
+                raise ValueError(f"Coefficients length {len(c)} does not match number of basis terms {self._num_terms}")
             self._coefficients = c
         else:
             self._coefficients = np.ones(self._num_terms, dtype=np.float64) / math.sqrt(self._num_terms)
@@ -114,11 +112,15 @@ class Fourier2D(BasisFunction2D):
         prune_threshold: float = 1e-12,
     ) -> ASTNode:
         c = self._coefficients if coefficients is None else np.asarray(coefficients, dtype=np.float64).ravel()
+        if len(c) < self._num_terms:
+            raise ValueError(f"Coefficients length {len(c)} is less than required basis terms {self._num_terms}")
         term_nodes: List[ASTNode] = []
 
         # DC component
         if symbolic_params or abs(float(c[0])) >= prune_threshold:
-            dc_node: ASTNode = ParameterNode(f"c{param_offset}", param_offset) if symbolic_params else ConstantNode(float(c[0]))
+            dc_node: ASTNode = (
+                ParameterNode(f"c{param_offset}", param_offset) if symbolic_params else ConstantNode(float(c[0]))
+            )
             term_nodes.append(dc_node)
 
         col = 1
@@ -136,7 +138,11 @@ class Fourier2D(BasisFunction2D):
             # Cosine term
             c_cos = float(c[col])
             if symbolic_params or abs(c_cos) >= prune_threshold:
-                p_cos = ParameterNode(f"c{param_offset + col}", param_offset + col) if symbolic_params else ConstantNode(c_cos)
+                p_cos = (
+                    ParameterNode(f"c{param_offset + col}", param_offset + col)
+                    if symbolic_params
+                    else ConstantNode(c_cos)
+                )
                 cos_node = FunctionCallNode("cos", (arg_node,))
                 term_nodes.append(BinaryOpNode("*", p_cos, cos_node))
             col += 1
@@ -144,7 +150,11 @@ class Fourier2D(BasisFunction2D):
             # Sine term
             c_sin = float(c[col])
             if symbolic_params or abs(c_sin) >= prune_threshold:
-                p_sin = ParameterNode(f"c{param_offset + col}", param_offset + col) if symbolic_params else ConstantNode(c_sin)
+                p_sin = (
+                    ParameterNode(f"c{param_offset + col}", param_offset + col)
+                    if symbolic_params
+                    else ConstantNode(c_sin)
+                )
                 sin_node = FunctionCallNode("sin", (arg_node,))
                 term_nodes.append(BinaryOpNode("*", p_sin, sin_node))
             col += 1
@@ -192,9 +202,7 @@ class DCT2Basis(BasisFunction2D):
         if coefficients is not None:
             c = np.asarray(coefficients, dtype=np.float64).ravel()
             if len(c) != self._num_terms:
-                raise ValueError(
-                    f"Coefficients length {len(c)} does not match number of basis terms {self._num_terms}"
-                )
+                raise ValueError(f"Coefficients length {len(c)} does not match number of basis terms {self._num_terms}")
             self._coefficients = c
         else:
             self._coefficients = np.ones(self._num_terms, dtype=np.float64) / math.sqrt(self._num_terms)
@@ -250,6 +258,8 @@ class DCT2Basis(BasisFunction2D):
         prune_threshold: float = 1e-12,
     ) -> ASTNode:
         c = self._coefficients if coefficients is None else np.asarray(coefficients, dtype=np.float64).ravel()
+        if len(c) < self._num_terms:
+            raise ValueError(f"Coefficients length {len(c)} is less than required basis terms {self._num_terms}")
         term_nodes: List[ASTNode] = []
         sqrt_2 = math.sqrt(2.0)
 
@@ -273,7 +283,11 @@ class DCT2Basis(BasisFunction2D):
             alpha_q = 1.0 if q == 0 else sqrt_2
             effective_scale = coeff_val * alpha_p * alpha_q
 
-            p_node: ASTNode = ParameterNode(f"c{param_offset + k}", param_offset + k) if symbolic_params else ConstantNode(effective_scale)
+            p_node: ASTNode = (
+                ParameterNode(f"c{param_offset + k}", param_offset + k)
+                if symbolic_params
+                else ConstantNode(effective_scale)
+            )
 
             # Cosine factors
             cos_p_ast: ASTNode

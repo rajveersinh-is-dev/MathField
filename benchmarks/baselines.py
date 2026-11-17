@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, List
 
 import numpy as np
 
@@ -38,6 +38,7 @@ def list_baselines() -> List[str]:
 @dataclass(frozen=True, slots=True)
 class BaselineResult:
     """Quantitative performance measurement for an empirical baseline model."""
+
     name: str
     mse: float
     psnr: float
@@ -104,19 +105,19 @@ def run_baseline(
         # Multi-scale Haar wavelet basis
         n_levels = max(1, int(math.log2(min(h, w))) - 2)
         # Block-averaged Haar reconstruction
-        block_size = max(2, min(h, w) // (2 ** n_levels))
+        block_size = max(2, min(h, w) // (2**n_levels))
         recon_channels = []
         n_params = 0
         for ch in range(c):
             y_ch = arr[:, :, ch] if c > 1 else arr
             down_h = h // block_size
             down_w = w // block_size
-            sub = y_ch[:down_h * block_size, :down_w * block_size]
+            sub = y_ch[: down_h * block_size, : down_w * block_size]
             reshaped = sub.reshape(down_h, block_size, down_w, block_size).mean(axis=(1, 3))
             up = np.repeat(np.repeat(reshaped, block_size, axis=0), block_size, axis=1)
             # Pad to original shape if needed
             full_recon = np.zeros((h, w), dtype=np.float64)
-            full_recon[:up.shape[0], :up.shape[1]] = up
+            full_recon[: up.shape[0], : up.shape[1]] = up
             recon_channels.append(full_recon)
             n_params = down_h * down_w
 
@@ -125,6 +126,7 @@ def run_baseline(
     elif norm_name == "splines":
         # Piecewise bicubic polynomial spline
         from scipy.interpolate import RectBivariateSpline
+
         x_knots = np.linspace(-1.0, 1.0, max(4, w // 4))
         y_knots = np.linspace(-1.0, 1.0, max(4, h // 4))
         n_params = len(x_knots) * len(y_knots)

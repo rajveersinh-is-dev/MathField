@@ -16,11 +16,9 @@ import numpy as np
 from mathfield.core.basis.polynomial import Chebyshev2D
 from mathfield.core.image_analysis import ImageAnalyzer
 from mathfield.core.optimize.evolutionary import EvolutionaryOptimizer
-from mathfield.core.optimize.solvers import solve_linear_lstsq
-from mathfield.core.pipeline.stage import PipelineContext, PipelineStage, StageStatus
+from mathfield.core.pipeline.stage import PipelineContext, StageStatus
 from mathfield.core.verify.metrics import compute_metrics
 from mathfield.core.verify.pruning import BICPruner
-from mathfield.core.verify.renderer import ReferenceRenderer
 
 
 class ModeAPipeline:
@@ -80,7 +78,9 @@ class ModeAPipeline:
         target_lum = (
             0.299 * img_arr[:, :, 0] + 0.587 * img_arr[:, :, 1] + 0.114 * img_arr[:, :, 2]
             if c >= 3
-            else img_arr[:, :, 0] if img_arr.ndim == 3 else img_arr
+            else img_arr[:, :, 0]
+            if img_arr.ndim == 3
+            else img_arr
         )
 
         # Solve linear coefficients for polynomial basis per channel
@@ -126,7 +126,6 @@ class ModeAPipeline:
         if context.is_cancelled():
             return StageStatus.CANCELLED
 
-        renderer = ReferenceRenderer()
         metrics = compute_metrics(fitted_arr, img_arr)
         context.metrics = metrics
         context.rendered_image = fitted_arr

@@ -28,6 +28,7 @@ class StageStatus(str, Enum):
 @dataclass
 class PipelineContext:
     """Shared state passed through sequential pipeline stages."""
+
     image: np.ndarray
     domain: Any
     config: Dict[str, Any] = field(default_factory=dict)
@@ -56,9 +57,7 @@ class PipelineStage(ABC):
     @abstractmethod
     def name(self) -> str:
         """Human-readable stage title."""
-        pass
 
     @abstractmethod
     def execute(self, context: PipelineContext) -> StageStatus:
         """Execute stage computation, updating context in-place."""
-        pass

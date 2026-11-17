@@ -2,12 +2,7 @@
 Multi-tier accelerated evaluation engine for MathField.
 """
 
-from mathfield.core.engine.cpu_numpy import (
-    compile_numpy,
-    compute_residuals_numpy,
-    compute_sse_numpy,
-    evaluate_numpy,
-)
+from mathfield.core.engine.backend import MultiTierEvaluator
 from mathfield.core.engine.cpu_native import (
     BytecodeProgram,
     NativeKernelManager,
@@ -20,6 +15,12 @@ from mathfield.core.engine.cpu_native import (
     get_openmp_thread_count,
     is_native_available,
 )
+from mathfield.core.engine.cpu_numpy import (
+    compile_numpy,
+    compute_residuals_numpy,
+    compute_sse_numpy,
+    evaluate_numpy,
+)
 from mathfield.core.engine.gpu_cupy import (
     CUDANotAvailableError,
     CUDAOutOfMemoryError,
@@ -29,7 +30,6 @@ from mathfield.core.engine.gpu_cupy import (
     evaluate_cupy,
     is_cuda_available,
 )
-from mathfield.core.engine.backend import MultiTierEvaluator
 
 __all__ = [
     # NumPy CPU

@@ -7,12 +7,14 @@ Prevents NaN, Inf, and process crashes across CPU and GPU evaluation backends.
 from __future__ import annotations
 
 import math
-from typing import Any, List, NamedTuple, Optional, Union
+from typing import NamedTuple
+
 import numpy as np
 
 
 class PoleWarning(NamedTuple):
     """Warning record indicating a potential singularity or domain violation."""
+
     node_repr: str
     variable: str
     critical_value: float
@@ -22,6 +24,7 @@ class PoleWarning(NamedTuple):
 # ==============================================================================
 # Vectorized Domain-Protected Operations (NumPy)
 # ==============================================================================
+
 
 def regularized_div(u: np.ndarray, v: np.ndarray, eps: float = 1e-12) -> np.ndarray:
     """
@@ -76,8 +79,10 @@ def protected_pow(u: np.ndarray, v: np.ndarray, eps: float = 1e-15) -> np.ndarra
     # Detect odd integers for negative base sign preservation
     # An exponent is effectively an odd integer if it is close to round(v) and round(v) % 2 != 0
     v_round = np.round(v_clamped)
-    is_integer = np.isclose(v_clamped, v_round, atol=1e-7)
-    is_odd_int = is_integer & (np.mod(np.abs(v_round).astype(np.int64), 2) == 1)
+    is_finite = np.isfinite(v_clamped)
+    is_integer = is_finite & np.isclose(v_clamped, v_round, atol=1e-7)
+    v_safe_int = np.nan_to_num(v_round, nan=0.0).astype(np.int64)
+    is_odd_int = is_integer & (np.mod(np.abs(v_safe_int), 2) == 1)
 
     # Default sign factor: +1.0 unless base < 0 and exponent is odd integer
     sign = np.where((u < 0.0) & is_odd_int, -1.0, 1.0)
@@ -179,29 +184,42 @@ def clamp_fn(x: np.ndarray, min_val: np.ndarray, max_val: np.ndarray) -> np.ndar
 # Scalar Pure-Python Reference Operations
 # ==============================================================================
 
+
 def safe_scalar_div(u: float, v: float, eps: float = 1e-12) -> float:
+    if math.isnan(u) or math.isnan(v):
+        return float("nan")
     s = math.copysign(eps, v)
     return u / (v + s)
 
 
 def safe_scalar_log(x: float, eps: float = 1e-15) -> float:
+    if math.isnan(x):
+        return float("nan")
     return math.log(max(x, eps))
 
 
 def safe_scalar_exp(x: float) -> float:
+    if math.isnan(x):
+        return float("nan")
     clamped = max(-80.0, min(80.0, x))
     return math.exp(clamped)
 
 
 def safe_scalar_sqrt(x: float) -> float:
+    if math.isnan(x):
+        return float("nan")
     return math.sqrt(max(x, 0.0))
 
 
 def safe_scalar_cbrt(x: float) -> float:
+    if math.isnan(x):
+        return float("nan")
     return math.copysign(math.pow(abs(x), 1.0 / 3.0), x)
 
 
 def safe_scalar_pow(u: float, v: float, eps: float = 1e-15) -> float:
+    if math.isnan(u) or math.isnan(v):
+        return float("nan")
     if abs(u) < 1e-15 and abs(v) < 1e-15:
         return 1.0
     v_clamped = max(-80.0, min(80.0, v))
@@ -214,6 +232,8 @@ def safe_scalar_pow(u: float, v: float, eps: float = 1e-15) -> float:
 
 
 def safe_scalar_sinc(x: float) -> float:
+    if math.isnan(x):
+        return float("nan")
     if abs(x) < 1e-12:
         return 1.0
     pi_x = math.pi * x
@@ -221,35 +241,47 @@ def safe_scalar_sinc(x: float) -> float:
 
 
 def safe_scalar_tan(x: float, max_val: float = 1e6) -> float:
+    if math.isnan(x):
+        return float("nan")
     val = math.tan(x)
     return max(-max_val, min(max_val, val))
 
 
 def safe_scalar_asin(x: float) -> float:
+    if math.isnan(x):
+        return float("nan")
     clamped = max(-1.0, min(1.0, x))
     return math.asin(clamped)
 
 
 def safe_scalar_acos(x: float) -> float:
+    if math.isnan(x):
+        return float("nan")
     clamped = max(-1.0, min(1.0, x))
     return math.acos(clamped)
 
 
 def safe_scalar_rbf_wendland(r: float, radius: float = 1.0) -> float:
+    if math.isnan(r) or math.isnan(radius):
+        return float("nan")
     safe_rad = max(abs(radius), 1e-12)
     norm_r = max(r, 0.0) / safe_rad
     if norm_r >= 1.0:
         return 0.0
     t = 1.0 - norm_r
-    return (t ** 4) * (4.0 * norm_r + 1.0)
+    return (t**4) * (4.0 * norm_r + 1.0)
 
 
 def safe_scalar_sigmoid(x: float) -> float:
+    if math.isnan(x):
+        return float("nan")
     clamped = max(-80.0, min(80.0, x))
     return 1.0 / (1.0 + math.exp(-clamped))
 
 
 def safe_scalar_softplus(x: float) -> float:
+    if math.isnan(x):
+        return float("nan")
     ax = abs(x)
     max_x = max(x, 0.0)
     return math.log1p(math.exp(-ax)) + max_x

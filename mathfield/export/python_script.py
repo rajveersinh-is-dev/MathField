@@ -7,9 +7,8 @@ Generates standalone, zero-dependency Python reproduction scripts.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, List, Union
 
-from mathfield.core.ast.nodes import ASTNode
 from mathfield.core.ast.parser import parse
 from mathfield.core.codegen.numpy_gen import to_python_code
 
@@ -99,8 +98,7 @@ def export_standalone_script(
             )
         else:
             render_logic += (
-                "    img_arr = np.stack([r_u8, g_u8, b_u8], axis=-1)\n"
-                "    img = Image.fromarray(img_arr, mode='RGB')\n"
+                "    img_arr = np.stack([r_u8, g_u8, b_u8], axis=-1)\n    img = Image.fromarray(img_arr, mode='RGB')\n"
             )
     else:
         formula_str = expressions.get("formula", "0") if isinstance(expressions, dict) else "0"
@@ -111,6 +109,12 @@ def export_standalone_script(
             "    img_arr = np.stack([z_u8, z_u8, z_u8], axis=-1)\n"
             "    img = Image.fromarray(img_arr, mode='RGB')\n"
         )
+
+    params_line = (
+        f"    params = np.array({params_code}, dtype=np.float64)\n"
+        if "params[" in render_logic
+        else (f"    _params = np.array({params_code}, dtype=np.float64)\n" if params_list else "")
+    )
 
     script_content = f'''#!/usr/bin/env python3
 """
@@ -128,8 +132,7 @@ def reconstruct(width: int, height: int) -> Image.Image:
     x = np.linspace({x_min:.17g}, {x_max:.17g}, width, dtype=np.float64)
     y = np.linspace({y_min:.17g}, {y_max:.17g}, height, dtype=np.float64)
     X, Y = np.meshgrid(x, y)
-    params = np.array({params_code}, dtype=np.float64)
-
+{params_line}
 {render_logic}
     return img
 

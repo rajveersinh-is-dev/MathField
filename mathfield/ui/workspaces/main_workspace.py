@@ -9,7 +9,7 @@ side-by-side curtain split comparison slider, and status ribbon.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 from PIL import Image

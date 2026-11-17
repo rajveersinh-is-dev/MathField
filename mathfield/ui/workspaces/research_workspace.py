@@ -21,7 +21,7 @@ class ResearchWorkspace:
     parameter trajectories, and SVD spectrum diagnostics.
     """
 
-    REJECTION_REASONS = [
+    REJECTION_REASONS = (
         "BIC_INCREASE",
         "ILL_CONDITIONED",
         "SYNTAX_VIOLATION",
@@ -29,7 +29,7 @@ class ResearchWorkspace:
         "RUNGE_INSTABILITY",
         "ZERO_VARIANCE",
         "PARETO_DOMINATED",
-    ]
+    )
 
     def __init__(self) -> None:
         self._candidate_log: List[Dict[str, Any]] = []
@@ -108,10 +108,12 @@ class ResearchWorkspace:
             writer = csv.writer(f)
             writer.writerow(["iteration", "expression", "status", "rationale", "delta_loss"])
             for c in self._candidate_log:
-                writer.writerow([
-                    c["iteration"],
-                    c["expression"],
-                    c["status"],
-                    c["rationale"],
-                    c["delta_loss"],
-                ])
+                writer.writerow(
+                    [
+                        c["iteration"],
+                        c["expression"],
+                        c["status"],
+                        c["rationale"],
+                        c["delta_loss"],
+                    ]
+                )

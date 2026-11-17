@@ -65,6 +65,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # FEATURE 1: Mode A (Mathematical Discovery) - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature01ModeABoundary:
     """Feature 1: Mode A (Mathematical Discovery) - Boundary & Corner Cases"""
 
@@ -78,15 +79,22 @@ class TestFeature01ModeABoundary:
         Image.fromarray(np.zeros((32, 32, 3), dtype=np.uint8), mode="RGB").save(str(black_img))
 
         out_dir = e2e_temp_dir / "f01_t2_black"
-        res = run_cli([
-            "--image", str(black_img),
-            "--output-dir", str(out_dir),
-            "--mode", "discovery",
-            "--lambda-reg", "0.5",
-            "--max-iter", "3",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(black_img),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "discovery",
+                "--lambda-reg",
+                "0.5",
+                "--max-iter",
+                "3",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
         proj_file = out_dir / "mathfield_out.mathfield"
         data = inspect_json_project(proj_file)
@@ -102,15 +110,22 @@ class TestFeature01ModeABoundary:
         Image.fromarray(np.full((32, 32, 3), 255, dtype=np.uint8), mode="RGB").save(str(white_img))
 
         out_dir = e2e_temp_dir / "f01_t2_white"
-        res = run_cli([
-            "--image", str(white_img),
-            "--output-dir", str(out_dir),
-            "--mode", "discovery",
-            "--lambda-reg", "0.5",
-            "--max-iter", "3",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(white_img),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "discovery",
+                "--lambda-reg",
+                "0.5",
+                "--max-iter",
+                "3",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
         proj_file = out_dir / "mathfield_out.mathfield"
         data = inspect_json_project(proj_file)
@@ -126,14 +141,20 @@ class TestFeature01ModeABoundary:
         Image.fromarray(np.array([[[128, 64, 32]]], dtype=np.uint8), mode="RGB").save(str(tiny_img))
 
         out_dir = e2e_temp_dir / "f01_t2_single_pixel"
-        res = run_cli([
-            "--image", str(tiny_img),
-            "--output-dir", str(out_dir),
-            "--mode", "discovery",
-            "--max-iter", "2",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(tiny_img),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "discovery",
+                "--max-iter",
+                "2",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
 
     def test_f01_t2_04_mode_a_extreme_lambda(self, synth_rgb_poly: Path, e2e_temp_dir: Path) -> None:
@@ -143,15 +164,22 @@ class TestFeature01ModeABoundary:
             pytest.skip("cli.py is under active parallel development in Milestone M3")
 
         out_dir = e2e_temp_dir / "f01_t2_extreme_lambda"
-        res = run_cli([
-            "--image", str(synth_rgb_poly),
-            "--output-dir", str(out_dir),
-            "--mode", "discovery",
-            "--lambda-reg", "1e6",
-            "--max-iter", "3",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_rgb_poly),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "discovery",
+                "--lambda-reg",
+                "1e6",
+                "--max-iter",
+                "3",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
         proj_file = out_dir / "mathfield_out.mathfield"
         data = inspect_json_project(proj_file)
@@ -165,21 +193,29 @@ class TestFeature01ModeABoundary:
             pytest.skip("cli.py is under active parallel development in Milestone M3")
 
         out_dir = e2e_temp_dir / "f01_t2_zero_lambda"
-        res = run_cli([
-            "--image", str(synth_rgb_poly),
-            "--output-dir", str(out_dir),
-            "--mode", "discovery",
-            "--lambda-reg", "0.0",
-            "--max-iter", "3",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_rgb_poly),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "discovery",
+                "--lambda-reg",
+                "0.0",
+                "--max-iter",
+                "3",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
 
 
 # ==============================================================================
 # FEATURE 2: Mode B (Maximum Fidelity) - Boundary & Corner Cases
 # ==============================================================================
+
 
 class TestFeature02ModeBBoundary:
     """Feature 2: Mode B (Maximum Fidelity) - Boundary & Corner Cases"""
@@ -191,14 +227,20 @@ class TestFeature02ModeBBoundary:
             pytest.skip("cli.py is under active parallel development in Milestone M3")
 
         out_dir = e2e_temp_dir / "f02_t2_checker"
-        res = run_cli([
-            "--image", str(synth_checker),
-            "--output-dir", str(out_dir),
-            "--mode", "fidelity",
-            "--max-iter", "3",
-            "--export-json",
-            "--quiet",
-        ])
+        res = run_cli(
+            [
+                "--image",
+                str(synth_checker),
+                "--output-dir",
+                str(out_dir),
+                "--mode",
+                "fidelity",
+                "--max-iter",
+                "3",
+                "--export-json",
+                "--quiet",
+            ]
+        )
         res.assert_success()
 
     def test_f02_t2_02_mode_b_near_singular_basis(self) -> None:
@@ -210,11 +252,14 @@ class TestFeature02ModeBBoundary:
 
         monitor = ConditionMonitor(max_condition_number=1e10, tikhonov_alpha=1e-4)
         # Create near-singular matrix with duplicate column perturbed by 1e-15
-        A = np.array([
-            [1.0, 2.0, 1.0],
-            [3.0, 4.0, 3.0 + 1e-15],
-            [5.0, 6.0, 5.0 - 1e-15],
-        ], dtype=np.float64)
+        A = np.array(
+            [
+                [1.0, 2.0, 1.0],
+                [3.0, 4.0, 3.0 + 1e-15],
+                [5.0, 6.0, 5.0 - 1e-15],
+            ],
+            dtype=np.float64,
+        )
 
         report = monitor.analyze_matrix(A)
         assert report["is_ill_conditioned"] is True
@@ -266,7 +311,7 @@ class TestFeature02ModeBBoundary:
         x = np.linspace(-1.0, 1.0, 16)
         X, Y = np.meshgrid(x, x)
         # Exact quadratic surface: f(x, y) = 0.5 * x^2 - 0.3 * y^2 + 0.1
-        exact_target = 0.5 * (X ** 2) - 0.3 * (Y ** 2) + 0.1
+        exact_target = 0.5 * (X**2) - 0.3 * (Y**2) + 0.1
 
         basis = Chebyshev2D(deg_x=2, deg_y=2, truncation="total_degree")
         Phi = basis.basis_matrix(X, Y)
@@ -281,12 +326,14 @@ class TestFeature02ModeBBoundary:
 # FEATURE 3: Continuous 2D Coordinate Domain - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature03ContinuousDomainBoundary:
     """Feature 3: Continuous 2D Coordinate Domain - Boundary & Corner Cases"""
 
     def _get_domain_module(self):
         try:
             from mathfield.core.domain import CoordinateDomain2D, DomainMode
+
             return CoordinateDomain2D, DomainMode
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.domain is under active development in Milestone M2")
@@ -344,6 +391,7 @@ class TestFeature03ContinuousDomainBoundary:
 
         # Continuous polynomial evaluation outside [-1, 1] evaluates smoothly to finite values
         from mathfield.core.basis.polynomial import Chebyshev2D
+
         poly = Chebyshev2D(deg_x=2, deg_y=2)
         vals = poly.evaluate(x_ext, y_ext)
         assert np.all(np.isfinite(vals))
@@ -353,12 +401,14 @@ class TestFeature03ContinuousDomainBoundary:
 # FEATURE 4: Stage 1 (Image Analysis) - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature04ImageAnalysisBoundary:
     """Feature 4: Stage 1 (Image Analysis) - Boundary & Corner Cases"""
 
     def _get_analyzer_module(self):
         try:
             from mathfield.core.image_analysis import ImageAnalysisResult, ImageAnalyzer
+
             return ImageAnalyzer, ImageAnalysisResult
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.image_analysis is under active development in Milestone M2")
@@ -421,6 +471,7 @@ class TestFeature04ImageAnalysisBoundary:
 # FEATURE 5: Stage 2 (Global Discovery) - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature05GlobalDiscoveryBoundary:
     """Feature 5: Stage 2 (Global Discovery) - Boundary & Corner Cases"""
 
@@ -430,6 +481,7 @@ class TestFeature05GlobalDiscoveryBoundary:
             from mathfield.core.basis.polynomial import Chebyshev2D
             from mathfield.core.basis.rational import Rational2D
             from mathfield.core.basis.rbf import WendlandC2RBF
+
             return Chebyshev2D, Fourier2D, WendlandC2RBF, Rational2D
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.basis is under active development in Milestone M2")
@@ -486,13 +538,7 @@ class TestFeature05GlobalDiscoveryBoundary:
         except (ImportError, ModuleNotFoundError):
             pytest.skip("GaussianRBF or solve_linear_lstsq under active development")
 
-        collinear_centers = np.array([
-            [0.0, 0.0],
-            [0.2, 0.2],
-            [0.4, 0.4],
-            [0.6, 0.6],
-            [0.8, 0.8]
-        ], dtype=np.float64)
+        collinear_centers = np.array([[0.0, 0.0], [0.2, 0.2], [0.4, 0.4], [0.6, 0.6], [0.8, 0.8]], dtype=np.float64)
         rbf = GaussianRBF(centers=collinear_centers, epsilons=2.0)
         X, Y = np.meshgrid(np.linspace(-1, 1, 16), np.linspace(-1, 1, 16))
         Phi = rbf.basis_matrix(X, Y)
@@ -505,6 +551,7 @@ class TestFeature05GlobalDiscoveryBoundary:
 # FEATURE 6: Stage 3 (Local Decomposition) - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature06LocalDecompositionBoundary:
     """Feature 6: Stage 3 (Local Decomposition) - Boundary & Corner Cases"""
 
@@ -516,6 +563,7 @@ class TestFeature06LocalDecompositionBoundary:
                 QuadtreeDecomposition,
                 QuadtreeNode,
             )
+
             return QuadtreeDecomposition, QuadtreeNode, WendlandPartitionOfUnity, LocalPatch
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.local is under active development in Milestone M2")
@@ -586,6 +634,7 @@ class TestFeature06LocalDecompositionBoundary:
 # FEATURE 7: Stage 4 (Joint Optimization) - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature07JointOptimizationBoundary:
     """Feature 7: Stage 4 (Joint Optimization) - Boundary & Corner Cases"""
 
@@ -597,6 +646,7 @@ class TestFeature07JointOptimizationBoundary:
                 LevenbergMarquardtOptimizer,
                 solve_linear_lstsq,
             )
+
             return solve_linear_lstsq, LevenbergMarquardtOptimizer, LBFGSBOptimizer, EvolutionaryOptimizer
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.optimize is under active development in Milestone M2")
@@ -619,9 +669,7 @@ class TestFeature07JointOptimizationBoundary:
         lm = LevenbergMarquardtOptimizer(initial_lambda=1e-2, max_iter=10)
         # Run LM on a non-linear problem: min 0.5 * (x^2 - 2)^2
         res = lm.minimize(
-            residual_fn=lambda x: x ** 2 - 2.0,
-            jacobian_fn=lambda x: 2.0 * x.reshape(-1, 1),
-            x0=np.array([5.0])
+            residual_fn=lambda x: x**2 - 2.0, jacobian_fn=lambda x: 2.0 * x.reshape(-1, 1), x0=np.array([5.0])
         )
         assert res["converged"] is True
         assert math.isclose(float(res["x"][0]), math.sqrt(2.0), rel_tol=1e-4)
@@ -632,10 +680,7 @@ class TestFeature07JointOptimizationBoundary:
         bounds = [(0.0, 2.0)]
         opt = LBFGSBOptimizer(bounds=bounds)
         # Minimize (x - 5)^2 where true minimum is at x=5, but bound is [0, 2]
-        res = opt.minimize(
-            fun=lambda x: float((x[0] - 5.0) ** 2),
-            x0=np.array([0.0])
-        )
+        res = opt.minimize(fun=lambda x: float((x[0] - 5.0) ** 2), x0=np.array([0.0]))
         assert res.success or res.status == 0 or hasattr(res, "x")
         # Solution must be clamped to upper bound 2.0
         assert math.isclose(float(res.x[0]), 2.0, abs_tol=1e-5)
@@ -660,6 +705,7 @@ class TestFeature07JointOptimizationBoundary:
 # FEATURE 8: Stage 5 (Refinement & Verification) - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature08RefinementVerificationBoundary:
     """Feature 8: Stage 5 (Refinement & Verification) - Boundary & Corner Cases"""
 
@@ -668,6 +714,7 @@ class TestFeature08RefinementVerificationBoundary:
             from mathfield.core.verify.metrics import compute_metrics
             from mathfield.core.verify.pruning import BICPruner
             from mathfield.core.verify.renderer import ReferenceRenderer
+
             return BICPruner, ReferenceRenderer, compute_metrics
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.verify is under active development in Milestone M2")
@@ -730,12 +777,14 @@ class TestFeature08RefinementVerificationBoundary:
 # FEATURE 9: Full-Colour & Alpha Support - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature09ColorAlphaBoundary:
     """Feature 9: Full-Colour & Alpha Support - Boundary & Corner Cases"""
 
     def _get_color_module(self):
         try:
             from mathfield.core.color import ColorSpace, ColorSpaceConverter
+
             return ColorSpaceConverter, ColorSpace
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.color is under active development in Milestone M2")
@@ -790,12 +839,14 @@ class TestFeature09ColorAlphaBoundary:
 # FEATURE 10: Safe Expression Grammar & Pratt Parser - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature10PrattParserBoundary:
     """Feature 10: Safe Expression Grammar & Pratt Parser - Boundary & Corner Cases"""
 
     def test_f10_t2_01_parser_deep_nested_parentheses(self) -> None:
         """TC-F10-T2-01: Deeply nested parentheses (100 levels) parses without recursion overflow."""
         from mathfield.core.ast import parse
+
         expr = "(" * 100 + "x" + ")" * 100
         ast = parse(expr)
         assert str(ast) == "x"
@@ -803,6 +854,7 @@ class TestFeature10PrattParserBoundary:
     def test_f10_t2_02_parser_empty_whitespace_string(self) -> None:
         """TC-F10-T2-02: Zero-length / whitespace expression string raises ParseError."""
         from mathfield.core.ast import ParseError, parse
+
         with pytest.raises((ParseError, ValueError)):
             parse("")
         with pytest.raises((ParseError, ValueError)):
@@ -811,6 +863,7 @@ class TestFeature10PrattParserBoundary:
     def test_f10_t2_03_parser_giant_numerical_constant(self) -> None:
         """TC-F10-T2-03: Giant numerical constants (1e300 and 1e-300) preserve double precision."""
         from mathfield.core.ast import parse
+
         ast_large = parse("1e300 * x")
         ast_small = parse("1e-300 * y")
         assert ast_large is not None
@@ -819,12 +872,14 @@ class TestFeature10PrattParserBoundary:
     def test_f10_t2_04_parser_consecutive_binary_operators(self) -> None:
         """TC-F10-T2-04: Consecutive binary operators ('x ++ y', 'x * / y') raises ParseError."""
         from mathfield.core.ast import ParseError, parse
+
         with pytest.raises((ParseError, SyntaxError, ValueError)):
             parse("x * / y")
 
     def test_f10_t2_05_parser_max_identifier_length(self) -> None:
         """TC-F10-T2-05: Maximum parameter identifier length (c + 100 digits) accepted without buffer overflow."""
         from mathfield.core.ast import parse
+
         long_param = "c" + "9" * 100
         ast = parse(f"{long_param} * x")
         assert ast.left.name == long_param
@@ -834,12 +889,14 @@ class TestFeature10PrattParserBoundary:
 # FEATURE 11: Numerical Domain Validation & Regularization - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature11NumericalRegularizationBoundary:
     """Feature 11: Numerical Domain Validation & Regularization - Boundary & Corner Cases"""
 
     def test_f11_t2_01_reg_division_by_zero(self) -> None:
         """TC-F11-T2-01: Division by zero (0/0 and 1/0) regularized to finite value without crash."""
         from mathfield.core.ast.domain import regularized_div
+
         u = np.array([0.0, 1.0, -5.0])
         v = np.array([0.0, 0.0, 0.0])
         res = regularized_div(u, v)
@@ -849,6 +906,7 @@ class TestFeature11NumericalRegularizationBoundary:
     def test_f11_t2_02_reg_log_zero_and_negative(self) -> None:
         """TC-F11-T2-02: Logarithm of zero and negative values (ln(0), ln(-1)) clamped to finite real."""
         from mathfield.core.ast.domain import protected_log
+
         x = np.array([0.0, -1.0, -1e6])
         res = protected_log(x)
         assert np.all(np.isfinite(res))
@@ -857,6 +915,7 @@ class TestFeature11NumericalRegularizationBoundary:
     def test_f11_t2_03_reg_exponential_overflow(self) -> None:
         """TC-F11-T2-03: Exponential overflow (exp(1000.0)) clamped to <= 1e38 without inf."""
         from mathfield.core.ast.domain import protected_exp
+
         x = np.array([1000.0, 5000.0])
         res = protected_exp(x)
         assert np.all(np.isfinite(res))
@@ -865,6 +924,7 @@ class TestFeature11NumericalRegularizationBoundary:
     def test_f11_t2_04_reg_sqrt_negative(self) -> None:
         """TC-F11-T2-04: Square root of negative number (sqrt(-1.0)) clamped to 0.0 without complex/NaN."""
         from mathfield.core.ast.domain import protected_sqrt
+
         x = np.array([-1.0, -100.0, -1e-6])
         res = protected_sqrt(x)
         assert np.all(res == 0.0)
@@ -872,6 +932,7 @@ class TestFeature11NumericalRegularizationBoundary:
     def test_f11_t2_05_reg_subnormal_denormals(self) -> None:
         """TC-F11-T2-05: Denormalized subnormal numbers (1e-310) avoid underflow trap or slowdown."""
         from mathfield.core.ast.domain import protected_log, regularized_div
+
         subnormal = np.array([1e-310], dtype=np.float64)
         div_res = regularized_div(subnormal, subnormal)
         log_res = protected_log(subnormal)
@@ -883,12 +944,14 @@ class TestFeature11NumericalRegularizationBoundary:
 # FEATURE 12: Symbolic Transformations & Derivatives - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature12SymbolicDerivativesBoundary:
     """Feature 12: Symbolic Transformations & Derivatives - Boundary & Corner Cases"""
 
     def test_f12_t2_01_diff_constant_folding(self) -> None:
         """TC-F12-T2-01: Derivative of constant expression (d/dx [42.0]) folds directly to 0.0."""
         from mathfield.core.ast import diff, parse, simplify
+
         ast = parse("42.0")
         d_dx = diff(ast, "x")
         folded = simplify(d_dx)
@@ -917,6 +980,7 @@ class TestFeature12SymbolicDerivativesBoundary:
     def test_f12_t2_03_diff_algebraic_identities(self) -> None:
         """TC-F12-T2-03: Constant folding algebraic identities (0*x->0, x+0->x, x*1->x, x^1->x, x^0->1)."""
         from mathfield.core.ast import parse, simplify
+
         assert str(simplify(parse("0 * x"))) == "0"
         assert str(simplify(parse("x + 0"))) == "x"
         assert str(simplify(parse("x * 1"))) == "x"
@@ -927,6 +991,7 @@ class TestFeature12SymbolicDerivativesBoundary:
     def test_f12_t2_04_diff_nonexistent_parameter(self) -> None:
         """TC-F12-T2-04: Derivative with respect to non-existent parameter returns 0."""
         from mathfield.core.ast import diff, parse, simplify
+
         ast = parse("c0 * x + c1 * y")
         d_dc99 = diff(ast, "c99")
         assert str(simplify(d_dc99)) in ("0", "0.0")
@@ -956,6 +1021,7 @@ class TestFeature12SymbolicDerivativesBoundary:
 # FEATURE 13: Multi-Tier Accelerated Evaluators - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature13EvaluatorBoundary:
     """Feature 13: Multi-Tier Accelerated Evaluators - Boundary & Corner Cases"""
 
@@ -963,6 +1029,7 @@ class TestFeature13EvaluatorBoundary:
         """TC-F13-T2-01: Single-point evaluation (1x1 matrix) evaluates without shape collapse."""
         from mathfield.core.ast import parse
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
+
         ast = parse("sin(x) + cos(y)")
         X = np.array([[0.5]])
         Y = np.array([[-0.5]])
@@ -974,6 +1041,7 @@ class TestFeature13EvaluatorBoundary:
         """TC-F13-T2-02: Large array allocation test (1024x1024 = 1M points) evaluates within budget."""
         from mathfield.core.ast import parse
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
+
         ast = parse("x^2 + y^2")
         x = np.linspace(-1, 1, 1024)
         X, Y = np.meshgrid(x, x)
@@ -987,6 +1055,7 @@ class TestFeature13EvaluatorBoundary:
         """TC-F13-T2-03: Simulated GPU Out-Of-Memory cascades seamlessly to CPU SIMD."""
         from mathfield.core.ast import parse
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
+
         ast = parse("x * y")
         X, Y = np.meshgrid(np.linspace(-1, 1, 10), np.linspace(-1, 1, 10))
         # Direct CPU fallback verification
@@ -997,6 +1066,7 @@ class TestFeature13EvaluatorBoundary:
         """TC-F13-T2-04: C++ DLL missing / uncompiled automatically falls back to NumPy CPU SIMD."""
         try:
             from mathfield.core.engine.cpu_native import is_native_available
+
             _ = is_native_available()
         except ImportError:
             pass  # Fallback verified
@@ -1005,6 +1075,7 @@ class TestFeature13EvaluatorBoundary:
         """TC-F13-T2-05: All-NaN input coordinates propagates cleanly according to IEEE-754 without crash."""
         from mathfield.core.ast import parse
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
+
         ast = parse("x + y")
         X = np.full((4, 4), np.nan)
         Y = np.full((4, 4), np.nan)
@@ -1016,6 +1087,7 @@ class TestFeature13EvaluatorBoundary:
 # FEATURE 14: Expression Code Generators - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature14ExpressionCodegenBoundary:
     """Feature 14: Expression Code Generators - Boundary & Corner Cases"""
 
@@ -1023,6 +1095,7 @@ class TestFeature14ExpressionCodegenBoundary:
         """TC-F14-T2-01: Constant or minimal expression emits valid Python and LaTeX templates."""
         from mathfield.core.ast import parse
         from mathfield.core.codegen import to_latex, to_python_code
+
         ast = parse("0")
         tex = to_latex(ast)
         py_code = to_python_code(ast)
@@ -1033,6 +1106,7 @@ class TestFeature14ExpressionCodegenBoundary:
         """TC-F14-T2-02: Expression with 50 parameters compiles to valid Python function without syntax error."""
         from mathfield.core.ast import parse
         from mathfield.core.codegen import to_python_code
+
         terms = [f"c{i} * x" for i in range(50)]
         formula = " + ".join(terms)
         ast = parse(formula)
@@ -1044,6 +1118,7 @@ class TestFeature14ExpressionCodegenBoundary:
         """TC-F14-T2-03: Complex rational expression with nested fractions emits balanced LaTeX braces."""
         from mathfield.core.ast import parse
         from mathfield.core.codegen import to_latex
+
         ast = parse("((x / y) + 1) / ((y / x) + 2)")
         tex = to_latex(ast)
         assert tex.count("{") == tex.count("}")
@@ -1052,6 +1127,7 @@ class TestFeature14ExpressionCodegenBoundary:
         """TC-F14-T2-04: Builtins (min, max, sum) not shadowed in generated Python expressions."""
         from mathfield.core.ast import parse
         from mathfield.core.codegen import to_python_code
+
         ast = parse("sin(x) + cos(y)")
         code = to_python_code(ast)
         assert "min = " not in code
@@ -1061,6 +1137,7 @@ class TestFeature14ExpressionCodegenBoundary:
         """TC-F14-T2-05: Exact decimal representations (1/3 -> 0.3333333333333333) preserve float64 bits."""
         from mathfield.core.ast import parse
         from mathfield.core.codegen import to_python_code
+
         val = 1.0 / 3.0
         ast = parse(f"{val} * x")
         code = to_python_code(ast)
@@ -1071,12 +1148,14 @@ class TestFeature14ExpressionCodegenBoundary:
 # FEATURE 15: 8K High-Resolution Tiling & Memory Management - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature15HighResTilingBoundary:
     """Feature 15: 8K High-Resolution Tiling & Memory Management - Boundary & Corner Cases"""
 
     def _get_tiler_module(self):
         try:
             from mathfield.core.engine.tiler import DomainChunker, TileInfo
+
             return DomainChunker, TileInfo
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.engine.tiler is under active development in Milestone M3")
@@ -1122,6 +1201,7 @@ class TestFeature15HighResTilingBoundary:
 # FEATURE 16: Robust Bit-Exact Job Checkpointing - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature16CheckpointBoundary:
     """Feature 16: Robust Bit-Exact Job Checkpointing - Boundary & Corner Cases"""
 
@@ -1132,6 +1212,7 @@ class TestFeature16CheckpointBoundary:
                 CheckpointManager,
             )
             from mathfield.core.checkpoint.serializer import CheckpointSerializer
+
             return CheckpointManager, CheckpointCorruptError, CheckpointSerializer
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.core.checkpoint is under active development in Milestone M3")
@@ -1195,12 +1276,14 @@ class TestFeature16CheckpointBoundary:
 # FEATURE 17: Main UI Workspace - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature17MainUIWorkspaceBoundary:
     """Feature 17: Main UI Workspace - Boundary & Corner Cases"""
 
     def _get_workspace(self):
         try:
             from mathfield.ui.workspaces.main_workspace import MainWorkspace
+
             return MainWorkspace
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workspaces.main_workspace is under active development in Milestone M4")
@@ -1250,12 +1333,14 @@ class TestFeature17MainUIWorkspaceBoundary:
 # FEATURE 18: Equation UI Workspace - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature18EquationUIBoundary:
     """Feature 18: Equation UI Workspace - Boundary & Corner Cases"""
 
     def _get_workspace(self):
         try:
             from mathfield.ui.workspaces.equation_workspace import EquationWorkspace
+
             return EquationWorkspace
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workspaces.equation_workspace is under active development in Milestone M4")
@@ -1302,12 +1387,14 @@ class TestFeature18EquationUIBoundary:
 # FEATURE 19: Region Analysis UI Workspace - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature19RegionAnalysisUIBoundary:
     """Feature 19: Region Analysis UI Workspace - Boundary & Corner Cases"""
 
     def _get_workspace(self):
         try:
             from mathfield.ui.workspaces.region_workspace import RegionWorkspace
+
             return RegionWorkspace
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workspaces.region_workspace is under active development in Milestone M4")
@@ -1357,6 +1444,7 @@ class TestFeature19RegionAnalysisUIBoundary:
 # FEATURE 20: Optimization UI Workspace - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature20OptimizationUIBoundary:
     """Feature 20: Optimization UI Workspace - Boundary & Corner Cases"""
 
@@ -1365,6 +1453,7 @@ class TestFeature20OptimizationUIBoundary:
             from mathfield.ui.workspaces.optimization_workspace import (
                 OptimizationWorkspace,
             )
+
             return OptimizationWorkspace
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workspaces.optimization_workspace is under active development in Milestone M4")
@@ -1416,12 +1505,14 @@ class TestFeature20OptimizationUIBoundary:
 # FEATURE 21: Research UI Workspace - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature21ResearchUIBoundary:
     """Feature 21: Research UI Workspace - Boundary & Corner Cases"""
 
     def _get_workspace(self):
         try:
             from mathfield.ui.workspaces.research_workspace import ResearchWorkspace
+
             return ResearchWorkspace
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workspaces.research_workspace is under active development in Milestone M4")
@@ -1477,12 +1568,14 @@ class TestFeature21ResearchUIBoundary:
 # FEATURE 22: Non-Blocking Background Execution - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature22NonBlockingBackgroundBoundary:
     """Feature 22: Non-Blocking Background Execution - Boundary & Corner Cases"""
 
     def _get_worker_module(self):
         try:
             from mathfield.ui.workers import OptimizationWorker, WorkerSignals
+
             return OptimizationWorker, WorkerSignals
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.ui.workers is under active development in Milestone M4")
@@ -1526,12 +1619,14 @@ class TestFeature22NonBlockingBackgroundBoundary:
 # FEATURE 23: Image Exports (PNG & JPG) - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature23ImageExportsBoundary:
     """Feature 23: Image Exports (PNG & JPG) - Boundary & Corner Cases"""
 
     def _get_raster_module(self):
         try:
             from mathfield.export.raster import export_jpg, export_png
+
             return export_png, export_jpg
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export.raster is under active development in Milestone M5")
@@ -1584,12 +1679,14 @@ class TestFeature23ImageExportsBoundary:
 # FEATURE 24: Documented SVG Export - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature24DocumentedSVGBoundary:
     """Feature 24: Documented SVG Export - Boundary & Corner Cases"""
 
     def _get_svg_module(self):
         try:
             from mathfield.export.svg import export_svg
+
             return export_svg
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export.svg is under active development in Milestone M5")
@@ -1642,12 +1739,14 @@ class TestFeature24DocumentedSVGBoundary:
 # FEATURE 25: Standalone Python Reproduction Script - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature25StandalonePythonReproductionBoundary:
     """Feature 25: Standalone Python Reproduction Script - Boundary & Corner Cases"""
 
     def _get_python_export_module(self):
         try:
             from mathfield.export.python_script import export_standalone_script
+
             return export_standalone_script
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export.python_script is under active development in Milestone M5")
@@ -1690,7 +1789,7 @@ class TestFeature25StandalonePythonReproductionBoundary:
         script_path = e2e_temp_dir / "precision_repro.py"
         sample_model = {
             "coordinate_domain": {"x_min": -1.0, "x_max": 1.0, "y_min": -1.0, "y_max": 1.0},
-            "expressions": {"R": "0.5 * (x + 1.0)", "G": "0.5 * (y + 1.0)", "B": "0"}
+            "expressions": {"R": "0.5 * (x + 1.0)", "G": "0.5 * (y + 1.0)", "B": "0"},
         }
         export_standalone_script(sample_model, script_path)
         out_img = e2e_temp_dir / "precision_out.png"
@@ -1705,7 +1804,7 @@ class TestFeature25StandalonePythonReproductionBoundary:
         script_path = e2e_temp_dir / "rgba_repro.py"
         sample_model = {
             "coordinate_domain": {"x_min": -1.0, "x_max": 1.0, "y_min": -1.0, "y_max": 1.0},
-            "expressions": {"R": "x", "G": "y", "B": "0", "A": "0.5"}
+            "expressions": {"R": "x", "G": "y", "B": "0", "A": "0.5"},
         }
         export_standalone_script(sample_model, script_path)
         out_img = e2e_temp_dir / "rgba_out.png"
@@ -1719,6 +1818,7 @@ class TestFeature25StandalonePythonReproductionBoundary:
 # FEATURE 26: Standalone LaTeX & PDF Report - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature26StandaloneLaTeXPDFReportBoundary:
     """Feature 26: Standalone LaTeX & PDF Report - Boundary & Corner Cases"""
 
@@ -1726,6 +1826,7 @@ class TestFeature26StandaloneLaTeXPDFReportBoundary:
         try:
             from mathfield.export.latex_report import export_latex_report
             from mathfield.export.pdf_report import export_pdf_report
+
             return export_latex_report, export_pdf_report
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export latex/pdf reports are under active development in Milestone M5")
@@ -1761,7 +1862,7 @@ class TestFeature26StandaloneLaTeXPDFReportBoundary:
             "original_image": dummy_arr,
             "reconstructed_image": dummy_arr,
             "error_heatmap": dummy_arr,
-            "figures": [dummy_arr, dummy_arr]
+            "figures": [dummy_arr, dummy_arr],
         }
         export_pdf_report(sample_result, pdf_path)
         info = inspect_pdf_report(pdf_path)
@@ -1788,6 +1889,7 @@ class TestFeature26StandaloneLaTeXPDFReportBoundary:
 # FEATURE 27: CSV Data & JSON Project Format - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature27CSVDataJSONProjectBoundary:
     """Feature 27: CSV Data & JSON Project Format - Boundary & Corner Cases"""
 
@@ -1799,6 +1901,7 @@ class TestFeature27CSVDataJSONProjectBoundary:
                 load_project,
                 save_project,
             )
+
             return export_csv_parameters, save_project, load_project, ProjectFileError
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export csv/project is under active development in Milestone M5")
@@ -1812,12 +1915,12 @@ class TestFeature27CSVDataJSONProjectBoundary:
             "coordinate_domain": {"x_min": -1.0, "x_max": 1.0, "y_min": -1.0, "y_max": 1.0},
             "color_space": "RGB",
             "global_model": {"channels": []},
-            "parameters": {"c0": {"float": 0.0, "hex": 0.0.hex()}},
-            "final_metrics": {"mse": 0.0, "psnr": 100.0}
+            "parameters": {"c0": {"float": 0.0, "hex": (0.0).hex()}},
+            "final_metrics": {"mse": 0.0, "psnr": 100.0},
         }
         save_project(data, target)
         recovered = load_project(target)
-        assert recovered["parameters"]["c0"]["hex"] == 0.0.hex()
+        assert recovered["parameters"]["c0"]["hex"] == (0.0).hex()
 
     def test_f27_t2_02_export_csv_10k_parameters_streaming(self, e2e_temp_dir: Path) -> None:
         """TC-F27-T2-02: CSV export with 10,000 parameters streams rows and preserves float precision >= 12 digits."""
@@ -1838,7 +1941,9 @@ class TestFeature27CSVDataJSONProjectBoundary:
         with pytest.raises((ProjectFileError, ValueError)):
             load_project(bad_file)
 
-    def test_f27_t2_04_project_json_crlf_lf_cross_platform(self, sample_mathfield_project: Path, e2e_temp_dir: Path) -> None:
+    def test_f27_t2_04_project_json_crlf_lf_cross_platform(
+        self, sample_mathfield_project: Path, e2e_temp_dir: Path
+    ) -> None:
         """TC-F27-T2-04: Cross-platform line endings (CRLF vs LF) load identically."""
         _, _, load_project, _ = self._get_project_csv_modules()
         content = sample_mathfield_project.read_text(encoding="utf-8")
@@ -1863,12 +1968,14 @@ class TestFeature27CSVDataJSONProjectBoundary:
 # FEATURE 28: Standalone Reproducibility Package Bundle - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature28ReproducibilityPackageBoundary:
     """Feature 28: Standalone Reproducibility Package Bundle - Boundary & Corner Cases"""
 
     def _get_bundle_module(self):
         try:
             from mathfield.export.bundle import export_bundle
+
             return export_bundle
         except (ImportError, ModuleNotFoundError):
             pytest.skip("mathfield.export.bundle is under active development in Milestone M5")
@@ -1923,6 +2030,7 @@ class TestFeature28ReproducibilityPackageBoundary:
 # FEATURE 29: Automated Test Suite Integration - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature29TestInfraBoundary:
     """Feature 29: Automated Test Suite Integration - Boundary & Corner Cases"""
 
@@ -1957,6 +2065,7 @@ class TestFeature29TestInfraBoundary:
         """TC-F29-T2-04: Memory leak test during 50 sequential small evaluations maintains bounded memory."""
         from mathfield.core.ast import parse
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
+
         ast = parse("sin(x) + cos(y)")
         X, Y = np.meshgrid(np.linspace(-1, 1, 16), np.linspace(-1, 1, 16))
         for _ in range(50):
@@ -1976,6 +2085,7 @@ class TestFeature29TestInfraBoundary:
 # FEATURE 30: Empirical Benchmarking Harness - Boundary & Corner Cases
 # ==============================================================================
 
+
 class TestFeature30EmpiricalBenchmarkingBoundary:
     """Feature 30: Empirical Benchmarking Harness - Boundary & Corner Cases"""
 
@@ -1984,6 +2094,7 @@ class TestFeature30EmpiricalBenchmarkingBoundary:
             import benchmarks.ablations as ablations_mod
             import benchmarks.baselines as baselines_mod
             import benchmarks.run_benchmarks as run_benchmarks_mod
+
             return baselines_mod, ablations_mod, run_benchmarks_mod
         except (ImportError, ModuleNotFoundError):
             pytest.skip("benchmarks package is under active development in Milestone M6")
@@ -2028,6 +2139,7 @@ class TestFeature30EmpiricalBenchmarkingBoundary:
 # ==============================================================================
 # FEATURE 31: Technical Paper Draft & Documentation - Boundary & Corner Cases
 # ==============================================================================
+
 
 class TestFeature31TechnicalPaperBoundary:
     """Feature 31: Technical Paper Draft & Documentation - Boundary & Corner Cases"""

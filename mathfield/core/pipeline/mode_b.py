@@ -19,9 +19,8 @@ from mathfield.core.local.local_patch import LocalPatch
 from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
 from mathfield.core.local.quadtree import QuadtreeDecomposition
 from mathfield.core.optimize.conditioning import ConditionMonitor
-from mathfield.core.pipeline.stage import PipelineContext, PipelineStage, StageStatus
+from mathfield.core.pipeline.stage import PipelineContext, StageStatus
 from mathfield.core.verify.metrics import compute_metrics
-from mathfield.core.verify.renderer import ReferenceRenderer
 
 
 class ModeBPipeline:
@@ -125,8 +124,8 @@ class ModeBPipeline:
             return StageStatus.CANCELLED
 
         residual = img_arr - global_recon
-        res_mag = np.sqrt(np.mean(residual ** 2, axis=-1)) if residual.ndim == 3 else residual
-        root_mse = float(np.mean(res_mag ** 2))
+        res_mag = np.sqrt(np.mean(residual**2, axis=-1)) if residual.ndim == 3 else residual
+        root_mse = float(np.mean(res_mag**2))
         default_thresh = max(1e-4, min(0.05, 0.25 * root_mse))
         split_thresh = float(self.config.get("split_threshold", default_thresh))
         max_depth = int(self.config.get("max_depth", 3))

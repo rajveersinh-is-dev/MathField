@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=65.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mathfield"
+version = "1.0.0"
+description = "Research-Grade Continuous Mathematical Image Reconstruction Engine"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "MathField Research Team" }
+]
+dependencies = [
+    "numpy>=1.23.0",
+    "scipy>=1.9.0",
+    "pillow>=9.0.0",
+    "matplotlib>=3.6.0",
+    "reportlab>=3.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-socket>=0.6.0",
+    "ruff>=0.1.0",
+]
+gpu = [
+    "cupy-cuda12x>=12.0.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = [
+    ".git",
+    ".pytest_cache",
+    "__pycache__",
+    "output",
+    "out_*",
+    "native/build",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "PIE", # flake8-pie
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",   # line length (handled by formatter)
+    "UP006",  # non-pep585-annotation (keep compatible across python versions)
+    "UP035",  # deprecated-import
+    "UP045",  # non-pep604-annotation-optional
+    "UP007",  # non-pep604-annotation-union
+    "SIM108", # ternary operator preference
+    "SIM105", # contextlib.suppress preference
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = ["mathfield"]
+
+

@@ -133,14 +133,14 @@ class TestRemainderBoundaries:
         "width, height, tile_size",
         [
             (1920, 1080, 512),  # 1080p with 512 tile
-            (1920, 1080, 1024), # 1080p with 1024 tile
-            (500, 300, 128),    # Non-power of two
+            (1920, 1080, 1024),  # 1080p with 1024 tile
+            (500, 300, 128),  # Non-power of two
             (1000, 1000, 256),  # Decimal dimension
-            (4096, 2160, 1024), # 4K Cinema UHD
-            (8192, 8192, 1024), # 8K Full
+            (4096, 2160, 1024),  # 4K Cinema UHD
+            (8192, 8192, 1024),  # 8K Full
             (8192, 8192, 768),  # 8K with non-multiple tile
-            (101, 97, 32),      # Prime/odd canvas
-            (64, 48, 256),      # Canvas smaller than tile size
+            (101, 97, 32),  # Prime/odd canvas
+            (64, 48, 256),  # Canvas smaller than tile size
         ],
     )
     def test_remainder_coverage_and_no_overlap(self, width: int, height: int, tile_size: int) -> None:
@@ -206,7 +206,9 @@ class TestMemmapStreaming:
         chunker = DomainChunker(tile_size=256)
         tiles = chunker.get_tiles(total_width=width, total_height=height)
         for tile in tiles:
-            mgr.array[tile.y_slice, tile.x_slice] = np.full((tile.height, tile.width), float(tile.tile_index), dtype=dtype)
+            mgr.array[tile.y_slice, tile.x_slice] = np.full(
+                (tile.height, tile.width), float(tile.tile_index), dtype=dtype
+            )
 
         mgr.flush()
         mgr.close()
@@ -272,42 +274,60 @@ class TestMemoryMonitoringAndThrottling:
         monitor = MemoryMonitor(ram_safety_threshold_bytes=500 * 1024 * 1024)
 
         # 1. Normal state: 8 GB available -> tile size stays 1024
-        with mock.patch.object(monitor, "check_memory", return_value={
-            "available_ram_bytes": 8 * 1024**3,
-            "vram_available_bytes": 8 * 1024**3,
-            "cuda_available": False,
-        }):
+        with mock.patch.object(
+            monitor,
+            "check_memory",
+            return_value={
+                "available_ram_bytes": 8 * 1024**3,
+                "vram_available_bytes": 8 * 1024**3,
+                "cuda_available": False,
+            },
+        ):
             safe_size = monitor.compute_safe_tile_size(current_tile_size=1024)
             assert safe_size == 1024
 
         # 2. Moderate pressure: 300 MB available (< 500 MB threshold) -> tile size shrinks
-        with mock.patch.object(monitor, "check_memory", return_value={
-            "available_ram_bytes": 300 * 1024**2,
-            "vram_available_bytes": 300 * 1024**2,
-            "cuda_available": False,
-        }):
+        with mock.patch.object(
+            monitor,
+            "check_memory",
+            return_value={
+                "available_ram_bytes": 300 * 1024**2,
+                "vram_available_bytes": 300 * 1024**2,
+                "cuda_available": False,
+            },
+        ):
             shrunk_size = monitor.compute_safe_tile_size(current_tile_size=1024)
             assert shrunk_size <= 512
 
         # 3. Severe pressure: 50 MB available -> clamps at minimum tile size (e.g. 64)
-        with mock.patch.object(monitor, "check_memory", return_value={
-            "available_ram_bytes": 50 * 1024**2,
-            "vram_available_bytes": 50 * 1024**2,
-            "cuda_available": False,
-        }):
+        with mock.patch.object(
+            monitor,
+            "check_memory",
+            return_value={
+                "available_ram_bytes": 50 * 1024**2,
+                "vram_available_bytes": 50 * 1024**2,
+                "cuda_available": False,
+            },
+        ):
             clamped_size = monitor.compute_safe_tile_size(current_tile_size=1024, min_tile_size=64)
             assert clamped_size == 64
 
     def test_insufficient_memory_exception_raised(self) -> None:
         """TC-TILER-10: Verify InsufficientMemoryError raised when even minimum tile exceeds budget."""
         monitor = MemoryMonitor(ram_safety_threshold_bytes=100 * 1024 * 1024)
-        with mock.patch.object(monitor, "check_memory", return_value={
-            "available_ram_bytes": 1024,
-            "vram_available_bytes": 1024,
-            "cuda_available": False,
-        }):
-            with pytest.raises((InsufficientMemoryError, MemoryError)):
-                monitor.compute_safe_tile_size(current_tile_size=1024, min_tile_size=64, fail_on_exhaustion=True)
+        with (
+            mock.patch.object(
+                monitor,
+                "check_memory",
+                return_value={
+                    "available_ram_bytes": 1024,
+                    "vram_available_bytes": 1024,
+                    "cuda_available": False,
+                },
+            ),
+            pytest.raises((InsufficientMemoryError, MemoryError)),
+        ):
+            monitor.compute_safe_tile_size(current_tile_size=1024, min_tile_size=64, fail_on_exhaustion=True)
 
 
 class Test8KSimulation:

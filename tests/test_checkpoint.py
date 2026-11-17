@@ -21,10 +21,7 @@ import pytest
 from mathfield.core.ast.nodes import (
     ASTNode,
     BinaryOpNode,
-    ConstantNode,
     FunctionCallNode,
-    ParameterNode,
-    UnaryOpNode,
     VariableNode,
 )
 from mathfield.core.ast.parser import parse
@@ -76,14 +73,17 @@ class TestHexFloatExactness:
 
     def test_parameter_array_hex_serialization_roundtrip(self) -> None:
         """TC-CHK-02: Verify 1D and 2D parameter ndarrays maintain bitwise equality via hex serialization."""
-        params = np.array([
-            0.0,
-            -0.0,
-            math.pi,
-            1.0 / 3.0,
-            float.fromhex("0x1.0000000000001p-1022"),
-            1e300,
-        ], dtype=np.float64)
+        params = np.array(
+            [
+                0.0,
+                -0.0,
+                math.pi,
+                1.0 / 3.0,
+                float.fromhex("0x1.0000000000001p-1022"),
+                1e300,
+            ],
+            dtype=np.float64,
+        )
 
         serialized = CheckpointSerializer.serialize_parameters(params)
         json_str = json.dumps(serialized)
@@ -92,7 +92,7 @@ class TestHexFloatExactness:
         assert restored.shape == params.shape
         assert restored.dtype == params.dtype
         np.testing.assert_array_equal(restored, params)
-        for orig, rest in zip(params, restored):
+        for orig, rest in zip(params, restored, strict=True):
             assert float(orig).hex() == float(rest).hex()
 
 
@@ -187,7 +187,7 @@ class TestAtomicWriteSafety:
             "schema_version": "1.0.0",
             "stage": "STAGE_4_OPTIMIZATION",
             "iteration": 25,
-            "parameters": {"c0": {"float": 1.5, "hex": float(1.5).hex()}},
+            "parameters": {"c0": {"float": 1.5, "hex": (1.5).hex()}},
         }
         mgr.save(target, payload)
 
@@ -211,9 +211,11 @@ class TestAtomicWriteSafety:
         original_content = target.read_text(encoding="utf-8")
 
         # Simulate crash during write of Version 2
-        with mock.patch("os.fsync", side_effect=IOError("Simulated disk write failure")):
-            with pytest.raises(IOError):
-                mgr.save(target, {"schema_version": "1.0.0", "stage": "STAGE_2", "iteration": 10})
+        with (
+            mock.patch("os.fsync", side_effect=OSError("Simulated disk write failure")),
+            pytest.raises(IOError),
+        ):
+            mgr.save(target, {"schema_version": "1.0.0", "stage": "STAGE_2", "iteration": 10})
 
         # Destination file must be completely unchanged
         assert target.read_text(encoding="utf-8") == original_content
@@ -248,7 +250,9 @@ class TestCorruptionAndVersionHandling:
         """TC-CHK-10: Verify incompatible schema version (e.g. 99.0.0) raises CheckpointCorruptError."""
         mgr = CheckpointManager(checkpoint_dir=tmp_path)
         future_file = tmp_path / "future.mfchk"
-        future_file.write_text(json.dumps({"schema_version": "99.0.0", "stage": "STAGE_1", "iteration": 0}), encoding="utf-8")
+        future_file.write_text(
+            json.dumps({"schema_version": "99.0.0", "stage": "STAGE_1", "iteration": 0}), encoding="utf-8"
+        )
 
         with pytest.raises(CheckpointCorruptError, match="version"):
             mgr.load(future_file)
@@ -320,12 +324,15 @@ class TestPipelineResumeParity:
             w_interrupted -= lr * grad
 
         mgr = CheckpointManager(checkpoint_dir=tmp_path)
-        mgr.save(chk_file, {
-            "schema_version": "1.0.0",
-            "stage": "STAGE_4_OPTIMIZATION",
-            "iteration": 10,
-            "parameters": CheckpointSerializer.serialize_parameters(w_interrupted),
-        })
+        mgr.save(
+            chk_file,
+            {
+                "schema_version": "1.0.0",
+                "stage": "STAGE_4_OPTIMIZATION",
+                "iteration": 10,
+                "parameters": CheckpointSerializer.serialize_parameters(w_interrupted),
+            },
+        )
 
         # 3. Resume from checkpoint at iteration 10
         loaded_data = mgr.load(chk_file)

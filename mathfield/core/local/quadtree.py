@@ -9,7 +9,7 @@ Focuses higher resolution on sharp image edges and high-contrast boundaries.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
 import numpy as np
@@ -18,6 +18,7 @@ import numpy as np
 @dataclass
 class QuadtreeNode:
     """A bounding region node within an adaptive spatial quadtree."""
+
     bounds: Tuple[float, float, float, float]  # (xmin, ymin, xmax, ymax)
     depth: int = 0
     is_leaf: bool = True
@@ -73,7 +74,7 @@ class QuadtreeDecomposition:
         if patch.size == 0:
             return 0.0
 
-        mse = float(np.mean(patch ** 2))
+        mse = float(np.mean(patch**2))
         if patch.shape[0] < 2 or patch.shape[1] < 2 or self.sobolev_mu <= 0.0:
             return mse
 
@@ -93,7 +94,7 @@ class QuadtreeDecomposition:
         res = np.asarray(residual, dtype=np.float64)
         if res.ndim == 3:
             # Grayscale magnitude for multi-channel residuals
-            res = np.sqrt(np.mean(res ** 2, axis=-1))
+            res = np.sqrt(np.mean(res**2, axis=-1))
 
         h, w = res.shape
         if domain is not None:

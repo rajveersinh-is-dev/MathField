@@ -15,7 +15,7 @@ import os
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -26,12 +26,12 @@ from mathfield.core.engine.backend import MultiTierEvaluator
 
 class InsufficientMemoryError(MemoryError):
     """Raised when available system memory or VRAM is insufficient for tile evaluation."""
-    pass
 
 
 # ============================================================================
 # 1. TileInfo Data Structure
 # ============================================================================
+
 
 class TileInfo:
     """
@@ -126,6 +126,7 @@ class TileInfo:
 # ============================================================================
 # 2. DomainChunker
 # ============================================================================
+
 
 class DomainChunker:
     """
@@ -278,12 +279,12 @@ class TiledReconstructionManager(DomainChunker):
     Manager class for high-resolution tiled reconstruction workflows.
     Compatible with E2E Tier 3 test suites.
     """
-    pass
 
 
 # ============================================================================
 # 3. MemmapManager
 # ============================================================================
+
 
 class MemmapManager:
     """
@@ -382,22 +383,28 @@ class MemmapManager:
 
         gc.collect()
 
-        if self.auto_cleanup and (self._is_temp_file or not self._is_temp_file) and os.path.exists(self.filepath):
+        if self.auto_cleanup and os.path.exists(self.filepath):
             try:
                 os.remove(self.filepath)
             except OSError:
                 pass
 
-    def __enter__(self) -> "MemmapManager":
+    def __enter__(self) -> MemmapManager:
         return self
 
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
         self.close()
 
 
 # ============================================================================
 # 4. MemoryMonitor & MemoryThrottle
 # ============================================================================
+
 
 class MemoryMonitor:
     """
@@ -420,6 +427,7 @@ class MemoryMonitor:
     def check_memory(self) -> Dict[str, Any]:
         """Collects current hardware memory telemetry."""
         import psutil
+
         vm = psutil.virtual_memory()
         proc = psutil.Process()
 
@@ -429,9 +437,9 @@ class MemoryMonitor:
             "used_ram_bytes": int(vm.used),
             "ram_percent": float(vm.percent),
             "process_rss_bytes": int(proc.memory_info().rss),
-            "ram_total_mb": float(vm.total) / (1024.0 ** 2),
-            "ram_available_mb": float(vm.available) / (1024.0 ** 2),
-            "process_rss_mb": float(proc.memory_info().rss) / (1024.0 ** 2),
+            "ram_total_mb": float(vm.total) / (1024.0**2),
+            "ram_available_mb": float(vm.available) / (1024.0**2),
+            "process_rss_mb": float(proc.memory_info().rss) / (1024.0**2),
             "cuda_available": False,
             "vram_available_bytes": None,
             "vram_free_mb": None,
@@ -441,14 +449,15 @@ class MemoryMonitor:
 
         try:
             import cupy as cp
+
             if cp.cuda.runtime.getDeviceCount() > 0:
                 dev = cp.cuda.Device()
                 free_b, total_b = dev.mem_info
                 telemetry["cuda_available"] = True
                 telemetry["vram_available_bytes"] = int(free_b)
-                telemetry["vram_free_mb"] = float(free_b) / (1024.0 ** 2)
-                telemetry["vram_total_mb"] = float(total_b) / (1024.0 ** 2)
-                telemetry["cupy_pool_used_mb"] = float(cp.get_default_memory_pool().used_bytes()) / (1024.0 ** 2)
+                telemetry["vram_free_mb"] = float(free_b) / (1024.0**2)
+                telemetry["vram_total_mb"] = float(total_b) / (1024.0**2)
+                telemetry["cupy_pool_used_mb"] = float(cp.get_default_memory_pool().used_bytes()) / (1024.0**2)
         except Exception:
             pass
 
@@ -529,12 +538,14 @@ class MemoryMonitor:
         if os.name == "nt":
             try:
                 import ctypes
+
                 ctypes.windll.psapi.EmptyWorkingSet(ctypes.windll.kernel32.GetCurrentProcess())
             except Exception:
                 pass
         if backend in ("cuda", "cupy"):
             try:
                 import cupy as cp
+
                 cp.get_default_memory_pool().free_all_blocks()
                 cp.get_default_pinned_memory_pool().free_all_blocks()
             except Exception:
@@ -548,6 +559,7 @@ MemoryThrottle = MemoryMonitor
 # ============================================================================
 # 5. High-Level Tiled Evaluation Pipeline
 # ============================================================================
+
 
 def evaluate_tiled(
     ast: ASTNode,

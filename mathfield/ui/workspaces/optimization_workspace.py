@@ -79,6 +79,7 @@ class OptimizationWorkspace:
         """
         try:
             import psutil
+
             cpu_pct = float(psutil.cpu_percent(interval=None))
             ram_pct = float(psutil.virtual_memory().percent)
             return {

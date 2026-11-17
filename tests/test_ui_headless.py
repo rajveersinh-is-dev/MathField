@@ -9,7 +9,6 @@ without requiring a GUI display server or window manager.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from mathfield.ui.main_window import MainWindow
 from mathfield.ui.workers import OptimizationWorker, WorkerSignals

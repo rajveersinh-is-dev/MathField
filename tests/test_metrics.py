@@ -10,8 +10,9 @@ Unit test suite for mathfield.core.verify.metrics and mathfield.core.verify.prun
 """
 
 import math
+import warnings
+
 import numpy as np
-import pytest
 
 from mathfield.core.verify.metrics import (
     compute_ciede2000,
@@ -100,3 +101,28 @@ def test_bic_pruning() -> None:
     assert 0 in res.retained_indices
     assert 1 in res.retained_indices
     assert res.final_bic <= res.initial_bic
+
+
+def test_metrics_empty_inputs_zero_warnings() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        m = compute_metrics(np.array([]), np.array([]))
+        assert m["mse"] == 0.0
+        assert m["mae"] == 0.0
+        assert m["linf"] == 0.0
+        assert m["psnr"] == 100.0
+        assert m["ssim"] == 1.0
+
+        assert compute_ciede2000(np.array([]), np.array([])) == 0.0
+
+
+def test_bic_pruner_empty_matrix() -> None:
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        pruner = BICPruner()
+        res = pruner.prune_matrix(np.zeros((0, 3)), np.zeros(0))
+        assert res.initial_mse == 0.0
+        assert res.final_mse == 0.0
+        assert len(res.coefficients) == 3

@@ -15,9 +15,10 @@ Generates full suite of deliverables:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import shutil
 import time
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -35,7 +36,9 @@ from mathfield.export.python_script import export_standalone_script
 from mathfield.export.raster import export_jpg, export_png
 from mathfield.export.svg import export_svg
 
-INPUT_IMAGE = Path(r"C:/Users/davea/.gemini/antigravity/brain/8953e3b7-d601-4777-8b63-fe5f1fe32be4/.user_uploaded/media_1794844888796_2afd2c38.jpg")
+INPUT_IMAGE = Path(
+    r"C:/Users/davea/.gemini/antigravity/brain/8953e3b7-d601-4777-8b63-fe5f1fe32be4/.user_uploaded/media_1794844888796_2afd2c38.jpg"
+)
 OUTPUT_DIR = Path(r"c:/Users/davea/OneDrive/Desktop/MathField/output/lotus_maximum_quality")
 ARTIFACT_DIR = Path(r"C:/Users/davea/.gemini/antigravity/brain/8953e3b7-d601-4777-8b63-fe5f1fe32be4")
 
@@ -63,11 +66,15 @@ def render_continuous_super_resolution(
     Phi_cheb = cheb_b.basis_matrix(X_s, Y_s)
     Phi_four = four_b.basis_matrix(X_s, Y_s)
     Phi_global = np.hstack([Phi_cheb, Phi_four[:, 1:]])
-    global_s = (Phi_global @ g_coeffs).reshape(out_h, out_w, c) if c > 1 else (Phi_global @ g_coeffs).reshape(out_h, out_w)
+    global_s = (
+        (Phi_global @ g_coeffs).reshape(out_h, out_w, c) if c > 1 else (Phi_global @ g_coeffs).reshape(out_h, out_w)
+    )
 
     # 2. Local patches evaluation with separable Wendland C2 partition of unity
     patches = ctx.local_decomposition.get("patches", [])
-    local_corr_s = np.zeros((out_h, out_w, c), dtype=np.float64) if c > 1 else np.zeros((out_h, out_w), dtype=np.float64)
+    local_corr_s = (
+        np.zeros((out_h, out_w, c), dtype=np.float64) if c > 1 else np.zeros((out_h, out_w), dtype=np.float64)
+    )
     sum_W_s = np.zeros((out_h, out_w), dtype=np.float64)
 
     xs = np.linspace(domain.x_min, domain.x_max, out_w)
@@ -279,11 +286,11 @@ def main() -> None:
         Rx = (1.0 + config["overlap_ratio"]) * hx
         Ry = (1.0 + config["overlap_ratio"]) * hy
         c = patch.coefficients
-        energy = float(np.sum(c ** 2)) if c is not None and c.size > 0 else 0.0
+        energy = float(np.sum(c**2)) if c is not None and c.size > 0 else 0.0
         formula = format_patch_formula(patch, max_terms=5)
         patch_equations.append(
             {
-                "id": f"P_{p_idx+1:03d}",
+                "id": f"P_{p_idx + 1:03d}",
                 "bounds": (float(lx0), float(ly0), float(lx1), float(ly1)),
                 "center": (float(cx), float(cy)),
                 "radius": (float(Rx), float(Ry)),
@@ -355,7 +362,9 @@ def main() -> None:
     # 2. Super-resolved continuous-domain rendering (2x resolution from continuous equations)
     super_w, super_h = w * 2, h * 2
     print(f"Rendering continuous 2x super-resolution ({super_w}x{super_h}) from equations...")
-    super_recon = render_continuous_super_resolution(ctx, domain, super_w, super_h, overlap_ratio=config["overlap_ratio"])
+    super_recon = render_continuous_super_resolution(
+        ctx, domain, super_w, super_h, overlap_ratio=config["overlap_ratio"]
+    )
     Image.fromarray((super_recon * 255.0).astype(np.uint8)).save(OUTPUT_DIR / "reconstruction_2x_superres.png")
     print(f"✔ Exported reconstruction_2x_superres.png ({super_w}x{super_h} via continuous mathematical evaluation)")
 
@@ -401,9 +410,15 @@ def main() -> None:
 
     # 9. Mathematical Artwork Posters (Hamid Naderi Yeganeh Style)
     export_artwork_poster(export_result, OUTPUT_DIR / "lotus_mathematical_artwork.png", layout="square", width=1600)
-    export_artwork_poster(export_result, OUTPUT_DIR / "lotus_mathematical_artwork.jpg", layout="square", width=1600, quality=95)
-    export_artwork_poster(export_result, OUTPUT_DIR / "lotus_mathematical_artwork_portrait.png", layout="portrait", width=1200)
-    export_artwork_poster(export_result, OUTPUT_DIR / "lotus_mathematical_artwork_portrait.jpg", layout="portrait", width=1200, quality=95)
+    export_artwork_poster(
+        export_result, OUTPUT_DIR / "lotus_mathematical_artwork.jpg", layout="square", width=1600, quality=95
+    )
+    export_artwork_poster(
+        export_result, OUTPUT_DIR / "lotus_mathematical_artwork_portrait.png", layout="portrait", width=1200
+    )
+    export_artwork_poster(
+        export_result, OUTPUT_DIR / "lotus_mathematical_artwork_portrait.jpg", layout="portrait", width=1200, quality=95
+    )
     print("✔ Exported lotus_mathematical_artwork (Square & Portrait posters in Hamid Naderi Yeganeh style)")
 
     # Copy visual comparison images and artwork posters into artifact directory
@@ -422,7 +437,9 @@ def main() -> None:
 
     shutil.copy2(OUTPUT_DIR / "lotus_mathematical_artwork.png", ARTIFACT_DIR / "lotus_mathematical_artwork.png")
     shutil.copy2(OUTPUT_DIR / "lotus_mathematical_artwork.jpg", ARTIFACT_DIR / "lotus_mathematical_artwork.jpg")
-    shutil.copy2(OUTPUT_DIR / "lotus_mathematical_artwork_portrait.png", ARTIFACT_DIR / "lotus_mathematical_artwork_portrait.png")
+    shutil.copy2(
+        OUTPUT_DIR / "lotus_mathematical_artwork_portrait.png", ARTIFACT_DIR / "lotus_mathematical_artwork_portrait.png"
+    )
 
     print("\n✔ Visual assets and mathematical artwork posters copied to artifact directory for presentation.")
     print("All tasks completed successfully!")

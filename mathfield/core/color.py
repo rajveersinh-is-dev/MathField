@@ -12,7 +12,6 @@ Provides:
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Union
@@ -22,6 +21,7 @@ import numpy as np
 
 class ColorSpace(str, Enum):
     """Supported color representations."""
+
     SRGB = "srgb"
     LINEAR_RGB = "linear_rgb"
     HSV = "hsv"
@@ -65,22 +65,28 @@ _D65_YN = 1.00000
 _D65_ZN = 1.08883
 
 # Linear RGB <-> CIE XYZ (sRGB D65)
-_RGB_TO_XYZ_MATRIX = np.array([
-    [0.4124564, 0.3575761, 0.1804375],
-    [0.2126729, 0.7151522, 0.0721750],
-    [0.0193339, 0.1191920, 0.9503041],
-], dtype=np.float64)
+_RGB_TO_XYZ_MATRIX = np.array(
+    [
+        [0.4124564, 0.3575761, 0.1804375],
+        [0.2126729, 0.7151522, 0.0721750],
+        [0.0193339, 0.1191920, 0.9503041],
+    ],
+    dtype=np.float64,
+)
 
-_XYZ_TO_RGB_MATRIX = np.array([
-    [3.2404542, -1.5371385, -0.4985314],
-    [-0.9692660, 1.8760108, 0.0415560],
-    [0.0556434, -0.2040259, 1.0572252],
-], dtype=np.float64)
+_XYZ_TO_RGB_MATRIX = np.array(
+    [
+        [3.2404542, -1.5371385, -0.4985314],
+        [-0.9692660, 1.8760108, 0.0415560],
+        [0.0556434, -0.2040259, 1.0572252],
+    ],
+    dtype=np.float64,
+)
 
 # CIELAB linear threshold constants (delta = 6/29)
 _DELTA = 6.0 / 29.0
-_DELTA_CUBED = _DELTA ** 3  # 216 / 24389 ~= 0.00885645
-_3_DELTA_SQUARED = 3.0 * (_DELTA ** 2)  # 108 / 841 ~= 0.12841855
+_DELTA_CUBED = _DELTA**3  # 216 / 24389 ~= 0.00885645
+_3_DELTA_SQUARED = 3.0 * (_DELTA**2)  # 108 / 841 ~= 0.12841855
 _4_29 = 4.0 / 29.0  # 4 / 29 ~= 0.13793103
 
 
@@ -342,6 +348,9 @@ class ColorSpaceConverter:
         p = np.asarray(pred, dtype=np.float64)
         t = np.asarray(target, dtype=np.float64)
         a = np.asarray(alpha, dtype=np.float64)
+
+        if p.size == 0 or t.size == 0 or a.size == 0:
+            return 0.0
 
         # Normalize alpha from [0, 255] if necessary
         if np.max(a) > 1.0:

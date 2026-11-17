@@ -13,7 +13,7 @@ from typing import Optional
 
 import numpy as np
 
-from mathfield.core.ast.nodes import ASTNode, ConstantNode, ParameterNode
+from mathfield.core.ast.nodes import ASTNode
 
 
 class BasisFunction2D(ABC):
@@ -23,7 +23,6 @@ class BasisFunction2D(ABC):
     @abstractmethod
     def num_terms(self) -> int:
         """Total number of basis components K in this expansion."""
-        pass
 
     @abstractmethod
     def basis_matrix(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
@@ -31,7 +30,6 @@ class BasisFunction2D(ABC):
         Evaluate all K basis functions across 2D coordinate matrices X, Y.
         Returns design matrix Phi of shape (X.size, num_terms).
         """
-        pass
 
     @abstractmethod
     def evaluate(
@@ -45,7 +43,6 @@ class BasisFunction2D(ABC):
         If coefficients is None, uses internal coefficients or default ones.
         Returns array matching X.shape.
         """
-        pass
 
     @abstractmethod
     def to_ast(
@@ -61,7 +58,6 @@ class BasisFunction2D(ABC):
         If symbolic_params is False, emits ConstantNode with coefficient values.
         Prunes terms with |c_k| < prune_threshold.
         """
-        pass
 
     @abstractmethod
     def get_complexity(self, coefficients: Optional[np.ndarray] = None) -> int:
@@ -69,4 +65,3 @@ class BasisFunction2D(ABC):
         Structural complexity C(M) of active terms for objective:
         J(M) = E(M) + lambda * C(M)
         """
-        pass

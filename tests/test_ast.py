@@ -2,16 +2,17 @@
 Unit tests for Abstract Syntax Tree (AST) node architecture and immutability.
 """
 
-from dataclasses import FrozenInstanceError
 import math
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from mathfield.core.ast.nodes import (
+    FUNCTION_ARITIES,
     ASTNode,
     BinaryOpNode,
     ConstantNode,
     FunctionCallNode,
-    FUNCTION_ARITIES,
     ParameterNode,
     UnaryOpNode,
     VariableNode,
@@ -212,4 +213,75 @@ def test_ast_node_delegates():
     d_node = node.diff("c0")
     assert isinstance(d_node, ConstantNode)
     assert d_node.value == 1.0
+
+
+def test_protected_pow_boundary_and_nan_safety() -> None:
+    import warnings
+
+    import numpy as np
+
+    from mathfield.core.ast.domain import protected_log, protected_pow, protected_sqrt, regularized_div
+
+    # Verify zero RuntimeWarning under any trapped warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+
+        # 1. NaN exponents and bases
+        u_nan = np.array([float("nan"), 2.0, -2.0, 0.0])
+        v_nan = np.array([2.0, float("nan"), 3.0, 0.0])
+        res = protected_pow(u_nan, v_nan)
+        assert np.isnan(res[0])
+        assert np.isnan(res[1])
+        assert math.isclose(float(res[2]), -8.0, abs_tol=1e-10)  # (-2)^3 = -8
+        assert math.isclose(float(res[3]), 1.0, abs_tol=1e-10)   # 0^0 = 1
+
+        # 2. Extreme and infinite exponents
+        u_inf = np.array([2.0, -2.0, 0.5])
+        v_inf = np.array([1e10, 3.0, -1e10])
+        res_inf = protected_pow(u_inf, v_inf)
+        assert np.all(np.isfinite(res_inf))
+
+        # 3. Regularized division
+        div_res = regularized_div(np.array([1.0, -1.0, 0.0]), np.array([0.0, -0.0, 0.0]))
+        assert np.all(np.isfinite(div_res))
+
+        # 4. Protected log and sqrt
+        log_res = protected_log(np.array([-5.0, 0.0, 1.0]))
+        assert np.all(np.isfinite(log_res))
+        sqrt_res = protected_sqrt(np.array([-10.0, 0.0, 4.0]))
+        assert np.all(np.isfinite(sqrt_res))
+
+
+def test_scalar_math_nan_propagation():
+    """Validates that pure-Python scalar math helpers propagate NaN instead of coercing to finite numbers."""
+    from mathfield.core.ast.domain import (
+        safe_scalar_acos,
+        safe_scalar_asin,
+        safe_scalar_div,
+        safe_scalar_exp,
+        safe_scalar_log,
+        safe_scalar_pow,
+        safe_scalar_sigmoid,
+        safe_scalar_sqrt,
+        safe_scalar_tan,
+    )
+
+    nan = float("nan")
+    assert math.isnan(safe_scalar_asin(nan))
+    assert math.isnan(safe_scalar_acos(nan))
+    assert math.isnan(safe_scalar_exp(nan))
+    assert math.isnan(safe_scalar_tan(nan))
+    assert math.isnan(safe_scalar_sigmoid(nan))
+    assert math.isnan(safe_scalar_log(nan))
+    assert math.isnan(safe_scalar_sqrt(nan))
+    assert math.isnan(safe_scalar_div(nan, 1.0))
+    assert math.isnan(safe_scalar_div(1.0, nan))
+    assert math.isnan(safe_scalar_pow(nan, 2.0))
+    assert math.isnan(safe_scalar_pow(2.0, nan))
+
+    # Also check finite boundary values
+    assert math.isclose(safe_scalar_asin(2.0), math.pi / 2.0, rel_tol=1e-10)
+    assert math.isclose(safe_scalar_asin(-2.0), -math.pi / 2.0, rel_tol=1e-10)
+    assert math.isclose(safe_scalar_exp(1000.0), math.exp(80.0), rel_tol=1e-10)
+    assert safe_scalar_div(1.0, 0.0) == 1.0 / 1e-12
 

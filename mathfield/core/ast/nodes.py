@@ -8,23 +8,10 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Sequence, Set, Tuple
+
 import numpy as np
 
 from mathfield.core.ast.domain import (
-    clamp_fn,
-    protected_acos,
-    protected_asin,
-    protected_cbrt,
-    protected_exp,
-    protected_log,
-    protected_pow,
-    protected_sinc,
-    protected_sqrt,
-    protected_tan,
-    rbf_gaussian,
-    rbf_multiquadric,
-    rbf_wendland,
-    regularized_div,
     safe_scalar_acos,
     safe_scalar_asin,
     safe_scalar_cbrt,
@@ -38,8 +25,6 @@ from mathfield.core.ast.domain import (
     safe_scalar_softplus,
     safe_scalar_sqrt,
     safe_scalar_tan,
-    sigmoid_fn,
-    softplus_fn,
 )
 
 # Exact 24 whitelisted functions and required arities
@@ -85,32 +70,26 @@ class ASTNode(ABC):
     @abstractmethod
     def children(self) -> Tuple[ASTNode, ...]:
         """Return immediate child nodes."""
-        pass
 
     @abstractmethod
     def complexity(self) -> int:
         """Structural complexity score C(M) for regularized loss J(M) = E(M) + lambda * C(M)."""
-        pass
 
     @abstractmethod
     def free_variables(self) -> Set[str]:
         """Set of coordinate variable names used (e.g. {'x', 'y'})."""
-        pass
 
     @abstractmethod
     def parameters(self) -> Set[str]:
         """Set of parameter names used (e.g. {'c0', 'theta1'})."""
-        pass
 
     @abstractmethod
     def eval_scalar(self, x: float, y: float, params: Sequence[float]) -> float:
         """Pure-Python reference scalar evaluation for unit checks and debugging."""
-        pass
 
     @abstractmethod
     def to_dict(self) -> Dict[str, Any]:
         """Serialize AST node to JSON-compatible dictionary."""
-        pass
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ASTNode:
@@ -139,32 +118,38 @@ class ASTNode(ABC):
     def compile_numpy(self) -> Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]:
         """Compile AST into a vectorized callable closure over (X, Y, params)."""
         from mathfield.core.engine.cpu_numpy import compile_numpy
+
         return compile_numpy(self)
 
     def compile_cuda(self) -> str:
         """Emit C++/CUDA elementwise kernel string snippet."""
         from mathfield.core.engine.gpu_cupy import ast_to_cuda_snippet
+
         return ast_to_cuda_snippet(self)
 
     def diff(self, param_name: str) -> ASTNode:
         """Compute analytical symbolic derivative with respect to param_name or variable."""
         from mathfield.core.ast.transforms import diff
+
         return diff(self, param_name)
 
     def to_latex(self) -> str:
         """Convert AST into AMS-LaTeX string."""
         from mathfield.core.codegen.latex import to_latex
+
         return to_latex(self)
 
     def to_python_code(self) -> str:
         """Convert AST into standalone Python function body using NumPy."""
         from mathfield.core.codegen.numpy_gen import to_python_code
+
         return to_python_code(self)
 
 
 @dataclass(frozen=True, slots=True)
 class ConstantNode(ASTNode):
     """Represents a numerical constant (e.g. 3.14159, or symbolic 'pi', 'e')."""
+
     value: float
     symbol: Optional[str] = None
 
@@ -203,6 +188,7 @@ class ConstantNode(ASTNode):
 @dataclass(frozen=True, slots=True)
 class VariableNode(ASTNode):
     """Represents a coordinate variable (x, y, u, v)."""
+
     name: str
 
     def __post_init__(self) -> None:
@@ -240,6 +226,7 @@ class VariableNode(ASTNode):
 @dataclass(frozen=True, slots=True)
 class ParameterNode(ASTNode):
     """Represents a continuously optimized parameter (e.g. c0, theta1, p2)."""
+
     name: str
     index: int
 
@@ -275,6 +262,7 @@ class ParameterNode(ASTNode):
 @dataclass(frozen=True, slots=True)
 class UnaryOpNode(ASTNode):
     """Represents a unary operation (+ or -)."""
+
     op: str
     operand: ASTNode
 
@@ -308,6 +296,7 @@ class UnaryOpNode(ASTNode):
 @dataclass(frozen=True, slots=True)
 class BinaryOpNode(ASTNode):
     """Represents a binary operation (+, -, *, /, ^, %)."""
+
     op: str
     left: ASTNode
     right: ASTNode
@@ -361,6 +350,7 @@ class BinaryOpNode(ASTNode):
 @dataclass(frozen=True, slots=True)
 class FunctionCallNode(ASTNode):
     """Represents an invocation of one of the 24 whitelisted mathematical functions."""
+
     func: str
     args: Tuple[ASTNode, ...]
 
@@ -473,14 +463,11 @@ def validate_parameter_bounds(node: ASTNode, params: Any) -> None:
 
     def _visit(n: ASTNode) -> None:
         nonlocal max_idx
-        if isinstance(n, ParameterNode):
-            if n.index > max_idx:
-                max_idx = n.index
+        if isinstance(n, ParameterNode) and n.index > max_idx:
+            max_idx = n.index
         for ch in n.children():
             _visit(ch)
 
     _visit(node)
     if max_idx >= p_len:
-        raise IndexError(
-            f"Parameter index {max_idx} is out of bounds for parameter array of length {p_len}."
-        )
+        raise IndexError(f"Parameter index {max_idx} is out of bounds for parameter array of length {p_len}.")

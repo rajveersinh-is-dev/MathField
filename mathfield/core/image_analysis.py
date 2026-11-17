@@ -12,10 +12,9 @@ Inspects input rasters (up to 8K resolution):
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 from PIL import Image
@@ -24,6 +23,7 @@ from PIL import Image
 @dataclass(frozen=True, slots=True)
 class ImageAnalysisResult:
     """Quantitative statistical characterization of an input raster."""
+
     width: int
     height: int
     aspect_ratio: float
@@ -138,6 +138,8 @@ class ImageAnalyzer:
         Returns 0.0 for perfectly flat / constant images.
         """
         arr = np.asarray(image, dtype=np.float64)
+        if arr.size == 0:
+            return 0.0
         if arr.max() > 1.0:
             arr = arr / 255.0
 
@@ -172,6 +174,8 @@ class ImageAnalyzer:
         Returns 0.0 for constant images.
         """
         arr = np.asarray(image)
+        if arr.size == 0:
+            return 0.0
         if np.issubdtype(arr.dtype, np.floating):
             # Scale to [0, 255] integer bins
             arr_norm = np.clip(arr, 0.0, 1.0) if arr.max() <= 1.0 else np.clip(arr, 0.0, 255.0) / 255.0
@@ -266,6 +270,9 @@ class ImageAnalyzer:
         Guarantees 1.0 on diagonal and 0.0 cross-correlations when a channel has zero variance.
         """
         arr = np.asarray(image, dtype=np.float64)
+        if arr.size == 0:
+            c_dim = arr.shape[2] if arr.ndim == 3 else 1
+            return np.eye(c_dim, dtype=np.float64)
         if arr.ndim == 2:
             return np.array([[1.0]], dtype=np.float64)
 

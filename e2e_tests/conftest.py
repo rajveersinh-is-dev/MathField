@@ -7,7 +7,6 @@ using pure NumPy and Pillow without precalculated constants or lookup tables.
 """
 
 import json
-import math
 import os
 import sys
 from pathlib import Path
@@ -38,8 +37,10 @@ def pytest_configure(config: pytest.Config) -> None:
 
     # Enforce strict offline execution invariant across all tests
     try:
-        import pytest_socket
         from dataclasses import replace
+
+        import pytest_socket
+
         # 1. Process-wide immediate disable
         pytest_socket.disable_socket()
         # 2. Update pytest-socket plugin configuration stash so plugin setup enforces it per test
@@ -55,6 +56,7 @@ def enforce_offline_sockets():
     """Guarantees network sockets are disabled before each test, surviving teardown resets."""
     try:
         import pytest_socket
+
         pytest_socket.disable_socket()
     except Exception:
         pass
@@ -64,6 +66,7 @@ def enforce_offline_sockets():
 # ============================================================================
 # Directory & Isolation Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def e2e_temp_dir(tmp_path: Path) -> Path:
@@ -83,6 +86,7 @@ def tmp_e2e_dir(e2e_temp_dir: Path) -> Path:
 # First-Principles Synthetic Image Generators
 # ============================================================================
 
+
 def _make_grid(width: int, height: int) -> Tuple[np.ndarray, np.ndarray]:
     """Generates 2D coordinate matrices X, Y in [-1.0, 1.0]."""
     x = np.linspace(-1.0, 1.0, width, dtype=np.float64)
@@ -97,7 +101,7 @@ def generate_poly_field(width: int, height: int) -> np.ndarray:
     Returns uint8 array of shape (height, width, 3).
     """
     X, Y = _make_grid(width, height)
-    f = 0.5 * (X ** 2) - 0.3 * (Y ** 2) + 0.2 * (X * Y) + 0.1
+    f = 0.5 * (X**2) - 0.3 * (Y**2) + 0.2 * (X * Y) + 0.1
     # Normalize f to [0, 1]
     f_min, f_max = float(np.min(f)), float(np.max(f))
     denom = f_max - f_min if f_max > f_min else 1.0
@@ -105,7 +109,7 @@ def generate_poly_field(width: int, height: int) -> np.ndarray:
 
     r = norm_f
     g = 0.5 * (1.0 - norm_f) + 0.5 * np.sin(np.pi * X) ** 2
-    b = norm_f ** 2
+    b = norm_f**2
     rgb = np.stack([r, g, b], axis=-1)
     return np.clip(rgb * 255.0, 0, 255).astype(np.uint8)
 
@@ -149,12 +153,12 @@ def generate_rbf_field(width: int, height: int) -> np.ndarray:
     f = np.zeros_like(X, dtype=np.float64)
     for x_c, y_c, sigma, amp in peaks:
         dist_sq = (X - x_c) ** 2 + (Y - y_c) ** 2
-        f += amp * np.exp(-dist_sq / (2.0 * (sigma ** 2)))
+        f += amp * np.exp(-dist_sq / (2.0 * (sigma**2)))
 
     f_max = float(np.max(f)) if float(np.max(f)) > 0 else 1.0
     norm_f = f / f_max
     r = norm_f
-    g = norm_f ** 1.5
+    g = norm_f**1.5
     b = np.sin(np.pi * norm_f)
     rgb = np.stack([r, g, b], axis=-1)
     return np.clip(rgb * 255.0, 0, 255).astype(np.uint8)
@@ -171,7 +175,7 @@ def generate_checker_field(width: int, height: int) -> np.ndarray:
     checker_norm = (checker + 1.0) * 0.5
 
     # Center disc
-    disc = np.where(X ** 2 + Y ** 2 < 0.25, 1.0, 0.0)
+    disc = np.where(X**2 + Y**2 < 0.25, 1.0, 0.0)
 
     r = 0.7 * checker_norm + 0.3 * disc
     g = 0.3 * checker_norm + 0.7 * disc
@@ -229,7 +233,7 @@ def generate_landscape_field(width: int, height: int) -> np.ndarray:
     X, Y = _make_grid(width, height)
     # Mountain ridge horizon function
     horizon = 0.15 * np.sin(2.0 * np.pi * X) + 0.08 * np.cos(5.0 * np.pi * X)
-    sky_mask = Y < horizon
+    sky_mask = horizon > Y
     ground_mask = ~sky_mask
 
     r = np.zeros_like(X)
@@ -294,15 +298,15 @@ def generate_scalar_field(width: int, height: int) -> np.ndarray:
     Returns uint8 array of shape (height, width, 3).
     """
     X, Y = _make_grid(width, height)
-    vortex_pos = np.exp(-((X - 0.3) ** 2 + Y ** 2) / 0.10)
-    vortex_neg = np.exp(-((X + 0.3) ** 2 + Y ** 2) / 0.10)
+    vortex_pos = np.exp(-((X - 0.3) ** 2 + Y**2) / 0.10)
+    vortex_neg = np.exp(-((X + 0.3) ** 2 + Y**2) / 0.10)
     w = vortex_pos - vortex_neg
 
     # Normalize to [0, 1]
     norm_w = (w + 1.0) * 0.5
     # Viridis-like analytical colormap approximation
     r = np.clip(np.sin(np.pi * norm_w - 0.2), 0.0, 1.0)
-    g = np.clip(norm_w ** 0.8, 0.0, 1.0)
+    g = np.clip(norm_w**0.8, 0.0, 1.0)
     b = np.clip(np.cos(np.pi * norm_w * 0.5), 0.0, 1.0)
 
     rgb = np.stack([r, g, b], axis=-1)
@@ -321,7 +325,7 @@ def generate_rgba_alpha_mask(width: int, height: int) -> np.ndarray:
     b = 0.5 * (1.0 + np.sin(np.pi * (X + Y)))
 
     # Circular mask: opaque in center, transparent outside radius 0.707
-    radius_sq = X ** 2 + Y ** 2
+    radius_sq = X**2 + Y**2
     alpha = np.where(radius_sq <= 0.50, 1.0, 0.0)
     # Smooth edge rolloff
     edge = (radius_sq > 0.40) & (radius_sq <= 0.50)
@@ -340,7 +344,7 @@ def generate_continuous_hsv(width: int, height: int) -> np.ndarray:
     """
     X, Y = _make_grid(width, height)
     hue = (np.arctan2(Y, X) + np.pi) / (2.0 * np.pi)  # in [0, 1]
-    radius = np.sqrt(X ** 2 + Y ** 2)
+    radius = np.sqrt(X**2 + Y**2)
     sat = np.clip(radius, 0.0, 1.0)
     val = np.ones_like(X)
 
@@ -355,17 +359,17 @@ def generate_continuous_hsv(width: int, height: int) -> np.ndarray:
     g = np.zeros_like(X)
     b = np.zeros_like(X)
 
-    idx0 = (h_i == 0)
+    idx0 = h_i == 0
     r[idx0], g[idx0], b[idx0] = val[idx0], t[idx0], p[idx0]
-    idx1 = (h_i == 1)
+    idx1 = h_i == 1
     r[idx1], g[idx1], b[idx1] = q[idx1], val[idx1], p[idx1]
-    idx2 = (h_i == 2)
+    idx2 = h_i == 2
     r[idx2], g[idx2], b[idx2] = p[idx2], val[idx2], t[idx2]
-    idx3 = (h_i == 3)
+    idx3 = h_i == 3
     r[idx3], g[idx3], b[idx3] = p[idx3], q[idx3], val[idx3]
-    idx4 = (h_i == 4)
+    idx4 = h_i == 4
     r[idx4], g[idx4], b[idx4] = t[idx4], p[idx4], val[idx4]
-    idx5 = (h_i == 5)
+    idx5 = h_i == 5
     r[idx5], g[idx5], b[idx5] = val[idx5], p[idx5], q[idx5]
 
     rgb = np.stack([r, g, b], axis=-1)
@@ -392,8 +396,9 @@ def generate_cielab_field(width: int, height: int) -> np.ndarray:
     fz = fy - b / 200.0
 
     delta = 6.0 / 29.0
+
     def f_inv(t: np.ndarray) -> np.ndarray:
-        return np.where(t > delta, t ** 3, 3.0 * (delta ** 2) * (t - 4.0 / 29.0))
+        return np.where(t > delta, t**3, 3.0 * (delta**2) * (t - 4.0 / 29.0))
 
     # Standard illuminant D65 reference white
     X_n, Y_n, Z_n = 0.95047, 1.00000, 1.08883
@@ -419,11 +424,7 @@ def generate_cielab_field(width: int, height: int) -> np.ndarray:
 
 
 def create_test_image(
-    path: Path,
-    kind: str = "poly",
-    width: int = 64,
-    height: int = 64,
-    color_space: str = "RGB"
+    path: Path, kind: str = "poly", width: int = 64, height: int = 64, color_space: str = "RGB"
 ) -> Path:
     """Creates and saves a synthetic test image to disk."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -477,6 +478,7 @@ def create_test_image(
 # ============================================================================
 # Test Image Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def synth_rgb_poly(e2e_temp_dir: Path) -> Path:
@@ -607,6 +609,7 @@ def synthetic_image_extreme(e2e_temp_dir: Path) -> Dict[str, str]:
 # Metadata, Expression & State Fixtures
 # ============================================================================
 
+
 @pytest.fixture(scope="session")
 def mock_8k_metadata() -> Dict[str, Any]:
     """Provides metadata describing an 8K (8192x8192) image for memory-aware tiling tests."""
@@ -642,24 +645,12 @@ def sample_ast_expressions() -> Dict[str, Tuple[str, np.ndarray]]:
     return {
         "polynomial": (
             "c0 + c1 * x + c2 * y + c3 * x^2 + c4 * y^2",
-            np.array([0.5, 0.2, -0.1, 0.3, -0.2], dtype=np.float64)
+            np.array([0.5, 0.2, -0.1, 0.3, -0.2], dtype=np.float64),
         ),
-        "fourier": (
-            "c0 * sin(pi * x) * cos(pi * y) + c1 * cos(2 * pi * x)",
-            np.array([0.8, -0.4], dtype=np.float64)
-        ),
-        "rbf": (
-            "c0 * exp(-((x - c1)^2 + (y - c2)^2) / (2 * c3^2))",
-            np.array([1.0, 0.0, 0.0, 0.5], dtype=np.float64)
-        ),
-        "rational": (
-            "(c0 + c1 * x) / (1.0 + c2 * x^2 + c3 * y^2)",
-            np.array([1.0, 0.5, 0.2, 0.2], dtype=np.float64)
-        ),
-        "regularized_div": (
-            "x / (y + 1e-12 * sign(y))",
-            np.array([], dtype=np.float64)
-        ),
+        "fourier": ("c0 * sin(pi * x) * cos(pi * y) + c1 * cos(2 * pi * x)", np.array([0.8, -0.4], dtype=np.float64)),
+        "rbf": ("c0 * exp(-((x - c1)^2 + (y - c2)^2) / (2 * c3^2))", np.array([1.0, 0.0, 0.0, 0.5], dtype=np.float64)),
+        "rational": ("(c0 + c1 * x) / (1.0 + c2 * x^2 + c3 * y^2)", np.array([1.0, 0.5, 0.2, 0.2], dtype=np.float64)),
+        "regularized_div": ("x / (y + 1e-12 * sign(y))", np.array([], dtype=np.float64)),
     }
 
 
@@ -688,36 +679,31 @@ def sample_mathfield_project(e2e_temp_dir: Path) -> Path:
                     "channel": "R",
                     "formula": "0.5 * x^2 + 0.1",
                     "parameters": [
-                        {"name": "c0", "value": 0.5, "hex": float(0.5).hex()},
-                        {"name": "c1", "value": 0.1, "hex": float(0.1).hex()}
-                    ]
+                        {"name": "c0", "value": 0.5, "hex": (0.5).hex()},
+                        {"name": "c1", "value": 0.1, "hex": (0.1).hex()},
+                    ],
                 },
                 {
                     "channel": "G",
                     "formula": "0.4 * y^2 + 0.2",
                     "parameters": [
-                        {"name": "c0", "value": 0.4, "hex": float(0.4).hex()},
-                        {"name": "c1", "value": 0.2, "hex": float(0.2).hex()}
-                    ]
+                        {"name": "c0", "value": 0.4, "hex": (0.4).hex()},
+                        {"name": "c1", "value": 0.2, "hex": (0.2).hex()},
+                    ],
                 },
                 {
                     "channel": "B",
                     "formula": "0.3 * x * y + 0.3",
                     "parameters": [
-                        {"name": "c0", "value": 0.3, "hex": float(0.3).hex()},
-                        {"name": "c1", "value": 0.3, "hex": float(0.3).hex()}
-                    ]
-                }
+                        {"name": "c0", "value": 0.3, "hex": (0.3).hex()},
+                        {"name": "c1", "value": 0.3, "hex": (0.3).hex()},
+                    ],
+                },
             ]
         },
         "local_patches": [],
-        "final_metrics": {
-            "mse": 0.0012,
-            "psnr": 29.21,
-            "ssim": 0.884,
-            "complexity": 6.0
-        },
-        "random_seed": 42
+        "final_metrics": {"mse": 0.0012, "psnr": 29.21, "ssim": 0.884, "complexity": 6.0},
+        "random_seed": 42,
     }
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return path
@@ -742,36 +728,23 @@ def sample_checkpoint_file(e2e_temp_dir: Path) -> Path:
         "max_iter": 100,
         "loss": 0.003456,
         "mode": "discovery",
-        "coordinate_domain": {
-            "x_min": -1.0,
-            "x_max": 1.0,
-            "y_min": -1.0,
-            "y_max": 1.0
-        },
-        "expressions": {
-            "R": "c0 * sin(pi * x) + c1 * y",
-            "G": "c2 * cos(pi * y) + c3",
-            "B": "c4 * x^2 + c5"
-        },
+        "coordinate_domain": {"x_min": -1.0, "x_max": 1.0, "y_min": -1.0, "y_max": 1.0},
+        "expressions": {"R": "c0 * sin(pi * x) + c1 * y", "G": "c2 * cos(pi * y) + c3", "B": "c4 * x^2 + c5"},
         "parameters": {
-            "c0": {"float": 0.825, "hex": float(0.825).hex()},
+            "c0": {"float": 0.825, "hex": (0.825).hex()},
             "c1": {"float": -0.3333333333333333, "hex": float(-1.0 / 3.0).hex()},
-            "c2": {"float": 0.65, "hex": float(0.65).hex()},
-            "c3": {"float": 0.12, "hex": float(0.12).hex()},
-            "c4": {"float": 0.45, "hex": float(0.45).hex()},
-            "c5": {"float": 0.05, "hex": float(0.05).hex()}
+            "c2": {"float": 0.65, "hex": (0.65).hex()},
+            "c3": {"float": 0.12, "hex": (0.12).hex()},
+            "c4": {"float": 0.45, "hex": (0.45).hex()},
+            "c5": {"float": 0.05, "hex": (0.05).hex()},
         },
-        "metrics": {
-            "mse": 0.003456,
-            "psnr": 24.61,
-            "ssim": 0.795
-        },
+        "metrics": {"mse": 0.003456, "psnr": 24.61, "ssim": 0.795},
         "rng_state": {
             "bit_generator": "PCG64",
             "state": {"state": 123456789, "inc": 987654321},
             "has_uint32": 0,
-            "uinteger": 0
-        }
+            "uinteger": 0,
+        },
     }
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return path

@@ -10,8 +10,7 @@ Linear and Nonlinear Optimization Solvers:
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.optimize import minimize
@@ -114,7 +113,6 @@ class LevenbergMarquardtOptimizer:
         Solve min 0.5 * ||r(x)||^2.
         """
         x = np.asarray(x0, dtype=np.float64).copy()
-        n = len(x)
 
         # Apply bounds to initial point
         if bounds is not None:
@@ -130,12 +128,24 @@ class LevenbergMarquardtOptimizer:
         r = residual_fn(x)
         cost = 0.5 * float(np.sum(r * r))
 
+        if len(x) == 0:
+            return {
+                "x": x,
+                "cost": cost,
+                "residual": r,
+                "n_iter": 0,
+                "converged": True,
+                "message": "No parameters to optimize",
+            }
+
         converged = False
         message = "max_iter reached"
 
+        last_it = -1
         for it in range(self.max_iter):
+            last_it = it
             J = jacobian_fn(x)  # shape (m, n)
-            g = J.T @ r         # shape (n,)
+            g = J.T @ r  # shape (n,)
 
             if np.max(np.abs(g)) < self.tol_g:
                 converged = True
@@ -191,7 +201,7 @@ class LevenbergMarquardtOptimizer:
             "x": x,
             "cost": cost,
             "residual": r,
-            "n_iter": it + 1,
+            "n_iter": last_it + 1,
             "converged": converged,
             "message": message,
         }

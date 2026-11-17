@@ -16,7 +16,7 @@ import numpy as np
 
 class ProjectFileError(Exception):
     """Raised when a .mathfield project file fails schema validation or corruption check."""
-    pass
+
 
 
 REQUIRED_ROOT_KEYS = [
@@ -100,7 +100,7 @@ def load_project(path: Union[str, Path]) -> Dict[str, Any]:
         content = p.read_text(encoding="utf-8-sig")
         data = json.loads(content)
     except json.JSONDecodeError as exc:
-        raise ProjectFileError(f"Corrupt JSON in project file: {exc}")
+        raise ProjectFileError(f"Corrupt JSON in project file: {exc}") from exc
 
     validate_project_dict(data)
     return data

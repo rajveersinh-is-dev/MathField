@@ -9,9 +9,8 @@ r(theta) = P_Phi^perp(theta) * y.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
+from typing import Callable, List, Literal, Optional, Tuple
 
 import numpy as np
 
@@ -21,6 +20,7 @@ from mathfield.core.optimize.solvers import solve_linear_lstsq
 @dataclass(frozen=True, slots=True)
 class VarProResult:
     """Outcome of Variable Projection optimization."""
+
     theta_opt: np.ndarray
     c_opt: np.ndarray
     residual: np.ndarray
@@ -92,10 +92,23 @@ class VarProOptimizer:
             return Phi, c, res, cost_val, cond_val
 
         Phi, c, r, cost, cond = eval_subproblem(theta)
+        if q == 0:
+            return VarProResult(
+                theta_opt=theta,
+                c_opt=c,
+                residual=r,
+                cost=cost,
+                n_iter=0,
+                condition_number=cond,
+                converged=True,
+                message="No nonlinear parameters to optimize",
+            )
         converged = False
         message = "max_iter reached"
 
+        last_it = -1
         for it in range(self.max_iter):
+            last_it = it
             # Compute derivatives of Phi with respect to theta
             dPhi_list: List[np.ndarray] = []
             if deriv_fn is not None:
@@ -194,7 +207,7 @@ class VarProOptimizer:
             c_opt=c,
             residual=r,
             cost=cost,
-            n_iter=it + 1,
+            n_iter=last_it + 1,
             condition_number=cond,
             converged=converged,
             message=message,
