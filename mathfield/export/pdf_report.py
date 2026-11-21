@@ -156,6 +156,16 @@ def export_pdf_report(
     color_space = result.get("color_space", "RGB")
     mode_str = result.get("mode", "MODE_B_FIDELITY")
     metrics = result.get("metrics", {})
+    condition_report = result.get("condition_report") or {}
+    raw_condition = (
+        condition_report.get("condition_number")
+        or (result.get("global_model") or {}).get("condition_number")
+        or metrics.get("condition_number")
+    )
+    try:
+        condition_value = float(raw_condition) if raw_condition is not None else None
+    except (TypeError, ValueError):
+        condition_value = None
 
     meta_data = [
         [
@@ -395,7 +405,15 @@ def export_pdf_report(
             f"{len(result.get('patch_equations', [])) or result.get('global_model', {}).get('local_patches_count', 'N/A')}",
             "Adaptive quadtree leaves with localized harmonic expansions",
         ),
-        ("CONVERGENCE", "CONVERGED (Tikhonov Regularized)", "SVD numerical condition monitoring: κ < 10⁴"),
+        (
+            "CONDITIONING",
+            "MONITORED" if condition_report.get("is_ill_conditioned") else "STABLE",
+            (
+                f"SVD condition number κ = {condition_value:.3g}"
+                if condition_value is not None
+                else "Condition number unavailable"
+            ),
+        ),
     ]
 
     for m_name, m_val, m_desc in metric_defs:

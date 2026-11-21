@@ -5,7 +5,7 @@ Empirical Baseline Implementations for Image Representation.
 Covers 5 classical mathematical representations:
 1. Chebyshev orthogonal polynomial expansion
 2. 2D Real Harmonic Fourier series
-3. Discrete Wavelet multiscale decomposition
+3. Haar-style block-average multiscale decomposition
 4. Tensor-product B-spline interpolation
 5. Gaussian Radial Basis Functions (RBF)
 

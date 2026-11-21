@@ -131,7 +131,7 @@ class TestScenario01PortraitPhotoReconstruction:
             from mathfield.export.project_file import load_project, save_project
             from mathfield.export.raster import export_png
         except (ImportError, ModuleNotFoundError):
-            return  # Downstream M5 modules under development
+            raise
 
         out_png = e2e_temp_dir / "portrait_recon.png"
         out_proj = e2e_temp_dir / "portrait_project.mathfield"
@@ -238,7 +238,7 @@ class TestScenario02LandscapeMultiScaleReconstruction:
             export_jpg(model, jpg_path, quality=95)
             assert jpg_path.exists()
         except (ImportError, ModuleNotFoundError):
-            pass
+            raise
 
 
 # ==============================================================================
@@ -309,7 +309,7 @@ class TestScenario03TypographyVectorLogoRecovery:
             info = inspect_svg(svg_path)
             assert info["is_valid_xml"] is True
         except (ImportError, ModuleNotFoundError):
-            pass
+            raise
 
 
 # ==============================================================================
@@ -385,7 +385,7 @@ class TestScenario04ScientificScalarFieldReconstruction:
             rows = inspect_csv_parameters(csv_path)
             assert len(rows) == 3
         except (ImportError, ModuleNotFoundError):
-            pass
+            raise
 
         # PDF Report Compilation (F26)
         try:
@@ -405,7 +405,7 @@ class TestScenario04ScientificScalarFieldReconstruction:
             info = inspect_pdf_report(pdf_path)
             assert info["page_count"] >= 1
         except (ImportError, ModuleNotFoundError):
-            pass
+            raise
 
 
 # ==============================================================================

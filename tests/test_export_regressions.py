@@ -80,7 +80,7 @@ def test_bundle_verify_checks_exported_model(tmp_path: Path) -> None:
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    assert "Verification PASSED" in result.stdout
+    assert "Determinism sanity check PASSED" in result.stdout
 
 
 def test_cli_exports_real_expressions_and_patch_bounds(tmp_path: Path) -> None:

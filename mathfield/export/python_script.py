@@ -6,6 +6,8 @@ Generates standalone, zero-dependency Python reproduction scripts.
 
 from __future__ import annotations
 
+import re
+import warnings
 from pathlib import Path
 from typing import Any, List, Union
 
@@ -54,9 +56,7 @@ def export_standalone_script(
                 v = float(val.get("value", 0.0)) if isinstance(val, dict) else float(val)
                 params_list.append(v)
         elif isinstance(raw_p, (list, tuple)):
-            params_list = [float(x) for x in raw_p[:32]]
-
-    params_code = "[" + ", ".join(f"{p:.17g}" for p in params_list[:32]) + "]"
+            params_list = [float(x) for x in raw_p]
 
     # Generate Python expression strings for channels
     has_rgb = any(k in expressions for k in ("R", "G", "B"))
@@ -72,8 +72,8 @@ def export_standalone_script(
             try:
                 ast_node = parse(clean_s)
                 return to_python_code(ast_node)
-            except Exception:
-                pass
+            except Exception as exc:
+                warnings.warn(f"Cannot compile expression {clean_s!r} for standalone export: {exc}", stacklevel=2)
         return "(0.0 * X)"
 
     if has_rgb:
@@ -110,6 +110,14 @@ def export_standalone_script(
             "    img_arr = np.stack([z_u8, z_u8, z_u8], axis=-1)\n"
             "    img = Image.fromarray(img_arr, mode='RGB')\n"
         )
+
+    # Size the emitted parameter vector to the highest referenced index so
+    # large ASTs cannot produce out-of-range params[i] at runtime.
+    used_indices = [int(value) for value in re.findall(r"params\[(\d+)\]", render_logic)]
+    required_count = max(32, max(used_indices) + 1) if used_indices else len(params_list)
+    if len(params_list) < required_count:
+        params_list = params_list + [0.0] * (required_count - len(params_list))
+    params_code = "[" + ", ".join(f"{p:.17g}" for p in params_list) + "]"
 
     params_line = (
         f"    params = np.array({params_code}, dtype=np.float64)\n"

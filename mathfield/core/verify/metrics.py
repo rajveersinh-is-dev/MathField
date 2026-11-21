@@ -16,6 +16,16 @@ from typing import Dict, Optional
 import numpy as np
 
 
+def _broadcast_weights(weights: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:
+    """Broadcast weights to the full data shape before reduction."""
+    w = np.asarray(weights, dtype=np.float64)
+    try:
+        return np.broadcast_to(w, shape)
+    except ValueError:
+        expanded = w.reshape(w.shape + (1,) * max(0, len(shape) - w.ndim))
+        return np.broadcast_to(expanded, shape)
+
+
 def compute_mse(
     a: np.ndarray,
     b: np.ndarray,
@@ -28,9 +38,7 @@ def compute_mse(
         return 0.0
     diff_sq = (arr_a - arr_b) ** 2
     if weights is not None:
-        w = np.asarray(weights, dtype=np.float64)
-        if w.ndim < diff_sq.ndim:
-            w = np.expand_dims(w, axis=-1)
+        w = _broadcast_weights(weights, diff_sq.shape)
         return float(np.sum(w * diff_sq) / (np.sum(w) + 1e-12))
     return float(np.mean(diff_sq))
 
@@ -47,9 +55,7 @@ def compute_mae(
         return 0.0
     diff = np.abs(arr_a - arr_b)
     if weights is not None:
-        w = np.asarray(weights, dtype=np.float64)
-        if w.ndim < diff.ndim:
-            w = np.expand_dims(w, axis=-1)
+        w = _broadcast_weights(weights, diff.shape)
         return float(np.sum(w * diff) / (np.sum(w) + 1e-12))
     return float(np.mean(diff))
 

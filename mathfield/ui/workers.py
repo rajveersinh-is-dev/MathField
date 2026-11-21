@@ -80,12 +80,18 @@ class OptimizationWorker(threading.Thread):
         self._result: Any = None
         self._error: Optional[Exception] = None
         self._runner: Optional[threading.Thread] = None
+        self._start_lock = threading.Lock()
 
     def set_task(self, task: Callable[[], Any]) -> None:
         self.task = task
 
     def start(self) -> None:
         """Launch a fresh runner each time so a worker can be reused for jobs."""
+        with self._start_lock:
+            self._start_unlocked()
+
+    def _start_unlocked(self) -> None:
+        """Create and start the runner with the caller holding _start_lock."""
         if self._runner is not None and self._runner.is_alive():
             raise RuntimeError("Worker is already running a job")
         self.is_cancelled = False
@@ -104,20 +110,23 @@ class OptimizationWorker(threading.Thread):
             self._runner.join(timeout)
 
     def start_job(self, task: Optional[Callable[[], Any]] = None) -> bool:
-        """Start a job if not already busy; cleanly reject concurrent jobs."""
-        if self.is_busy or self.is_alive():
-            return False
-        if task is not None:
-            self.task = task
-        self.start()
-        return True
+        """Start a job if not already busy; reject concurrent callers atomically."""
+        with self._start_lock:
+            if self.is_busy or self.is_alive():
+                return False
+            if task is not None:
+                self.task = task
+            self._start_unlocked()
+            return True
 
     def execute_in_background(self, task: Callable[[], Any]) -> int:
         """Helper to run a task immediately in background and return its thread ID."""
-        self.set_task(task)
-        self.start()
-        assert self._runner is not None
-        return self._runner.ident or threading.get_ident()
+        with self._start_lock:
+            self.set_task(task)
+            self._start_unlocked()
+            runner = self._runner
+        assert runner is not None
+        return runner.ident or threading.get_ident()
 
     def request_cancel(self) -> None:
         """Set cooperative cancellation flag (< 500 ms target)."""
@@ -129,7 +138,8 @@ class OptimizationWorker(threading.Thread):
         self.request_cancel()
         if self.is_alive():
             self.join(timeout=1.0)
-        self.is_busy = False
+        # A timed-out join means the task is still running; stay busy.
+        self.is_busy = self.is_alive()
 
     def isRunning(self) -> bool:
         """Qt compatibility alias for thread status."""

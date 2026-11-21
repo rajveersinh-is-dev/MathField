@@ -27,7 +27,9 @@ class OptimizationWorkspace:
         self._iterations: List[int] = []
 
     def pause(self) -> None:
-        """Pause active optimization loop."""
+        """Pause active optimization loop (terminal states are immutable)."""
+        if self.is_cancelled or self.has_diverged:
+            return
         self.is_paused = True
         self._status = "PAUSED"
 
@@ -57,7 +59,7 @@ class OptimizationWorkspace:
                 self._curves[k] = []
             val = float(v)
             self._curves[k].append(val)
-            if math.isnan(val) or math.isinf(val) or val > 1e12:
+            if not math.isfinite(val) or abs(val) > 1e12:
                 self.has_diverged = True
                 self._status = "DIVERGED"
 

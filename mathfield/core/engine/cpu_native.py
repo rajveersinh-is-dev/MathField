@@ -202,6 +202,8 @@ class NativeKernelManager:
         candidate_paths.append(current_dir / "mathfield_kernels.dll")
         candidate_paths.append(current_dir / "libmathfield_kernels.so")
         candidate_paths.append(current_dir / "libmathfield_kernels.dylib")
+        candidate_paths.append(current_dir / "mathfield_kernels.so")
+        candidate_paths.append(current_dir / "mathfield_kernels.dylib")
 
         # 3. native/build/Release directory
         root_dir = current_dir.parent.parent.parent.resolve()

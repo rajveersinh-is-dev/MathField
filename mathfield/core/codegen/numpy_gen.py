@@ -32,6 +32,12 @@ def to_python_code(node: ASTNode) -> str:
     return _node_to_numpy_expr(node)
 
 
+def _protected_power_expr(base: str, exponent: str) -> str:
+    """Match runtime protected_pow: clamp exponent*log|base| to e^[-80, 80]."""
+    magnitude = f"np.maximum(np.abs({base}), 1e-15)"
+    return f"np.exp(np.clip(({exponent}) * np.log({magnitude}), -80.0, 80.0))"
+
+
 def _flatten_additive(node: ASTNode, sign: int = 1) -> list[tuple[int, ASTNode]]:
     """Return the signed leaf terms of an associative +/- chain."""
     if isinstance(node, BinaryOpNode) and node.op in ("+", "-"):
@@ -95,10 +101,10 @@ def _node_to_numpy_expr(node: ASTNode) -> str:
                 elif rv.is_integer():
                     int_v = int(rv)
                     sign_part = "-1.0" if int_v % 2 != 0 else "1.0"
-                    return f"(np.where({l_str} < 0.0, {sign_part}, 1.0) * np.power(np.maximum(np.abs({l_str}), 1e-15), {rv:g}))"
+                    return f"(np.where({l_str} < 0.0, {sign_part}, 1.0) * {_protected_power_expr(l_str, f'{rv:g}')})"
             return (
                 f"(np.where(({l_str} < 0.0) & (np.mod(np.abs(np.round(np.clip({r_str}, -80.0, 80.0))).astype(np.int64), 2) == 1), -1.0, 1.0) * "
-                f"np.power(np.maximum(np.abs({l_str}), 1e-15), np.clip({r_str}, -80.0, 80.0)))"
+                f"{_protected_power_expr(l_str, f'np.clip({r_str}, -80.0, 80.0)')})"
             )
         elif op == "%":
             return f"np.fmod({l_str}, np.maximum(np.abs({r_str}), 1e-12))"
@@ -145,10 +151,10 @@ def _node_to_numpy_expr(node: ASTNode) -> str:
                 elif rv.is_integer():
                     int_v = int(rv)
                     sign_part = "-1.0" if int_v % 2 != 0 else "1.0"
-                    return f"(np.where({args_str[0]} < 0.0, {sign_part}, 1.0) * np.power(np.maximum(np.abs({args_str[0]}), 1e-15), {rv:g}))"
+                    return f"(np.where({args_str[0]} < 0.0, {sign_part}, 1.0) * {_protected_power_expr(args_str[0], f'{rv:g}')})"
             return (
                 f"(np.where(({args_str[0]} < 0.0) & (np.mod(np.abs(np.round(np.clip({args_str[1]}, -80.0, 80.0))).astype(np.int64), 2) == 1), -1.0, 1.0) * "
-                f"np.power(np.maximum(np.abs({args_str[0]}), 1e-15), np.clip({args_str[1]}, -80.0, 80.0)))"
+                f"{_protected_power_expr(args_str[0], f'np.clip({args_str[1]}, -80.0, 80.0)')})"
             )
         elif f == "abs":
             return f"np.abs({args_str[0]})"

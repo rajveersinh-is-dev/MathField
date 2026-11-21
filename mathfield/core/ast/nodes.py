@@ -403,8 +403,12 @@ class FunctionCallNode(ASTNode):
         elif f == "atan":
             return math.atan(eval_args[0])
         elif f == "sinh":
+            if math.isnan(eval_args[0]):
+                return float("nan")
             return math.sinh(max(-80.0, min(80.0, eval_args[0])))
         elif f == "cosh":
+            if math.isnan(eval_args[0]):
+                return float("nan")
             return math.cosh(max(-80.0, min(80.0, eval_args[0])))
         elif f == "tanh":
             return math.tanh(eval_args[0])
@@ -423,13 +427,18 @@ class FunctionCallNode(ASTNode):
         elif f == "abs":
             return abs(eval_args[0])
         elif f == "sign":
+            if math.isnan(eval_args[0]):
+                return float("nan")
             return 1.0 if eval_args[0] > 0.0 else (-1.0 if eval_args[0] < 0.0 else 0.0)
         elif f == "sigmoid":
             return safe_scalar_sigmoid(eval_args[0])
         elif f == "softplus":
             return safe_scalar_softplus(eval_args[0])
         elif f == "clamp":
-            return max(eval_args[1], min(eval_args[2], eval_args[0]))
+            value, low, high = eval_args[0], eval_args[1], eval_args[2]
+            if math.isnan(value):
+                return float("nan")
+            return min(max(value, low), high)
         elif f == "rbf_gaussian":
             scaled = eval_args[1] * eval_args[0]
             return math.exp(-min(scaled * scaled, 80.0))

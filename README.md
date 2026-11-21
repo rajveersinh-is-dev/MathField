@@ -16,7 +16,7 @@ that reproduce a discrete raster image when evaluated on a continuous 2D domain.
 
 [![MathField demo video](docs/demo/preview.png)](docs/demo/demo.mp4)
 
-**[Watch the demo video (MP4, 10 s, 960×540)](docs/demo/demo.mp4)**
+**[Watch the demo video (MP4, 10.5 s, 1280×720)](docs/demo/demo.mp4)**
 
 The clip is generated from a live reconstruction: a deterministic analytic test image is fitted by Mode B, then the video shows the target, the progressive reconstruction, a curtain comparison, the amplified error field and the leading discovered equations. To regenerate it:
 
@@ -32,7 +32,7 @@ python docs/demo/make_demo.py
 
 | Capability | What it does |
 | :--- | :--- |
-| **Mode A — discovery** | Pareto-optimal symbolic search with BIC pruning and Variable Projection, balancing error and complexity via $J(M)=E(M)+\lambda C(M)$. |
+| **Mode A — discovery** | Pareto-optimal symbolic search with BIC pruning, balancing error and complexity via $J(M)=E(M)+\lambda C(M)$. A standalone Variable Projection optimizer is also provided in `mathfield/core/optimize/`. |
 | **Mode B — fidelity** | Dense Chebyshev + Fourier expansions, Sobolev-guided adaptive quadtree patches and separable Wendland $C^2$ partition-of-unity blending. |
 | **Multi-tier evaluation** | Vectorised NumPy, an optional native C++/OpenMP kernel and an optional CUDA backend, with automatic fallback. |
 | **Out-of-core tiling** | Bounded-memory tiled/memmapped rendering for images up to 8K. |
@@ -57,14 +57,14 @@ Optional extras: `.[gpu]` for CuPy/CUDA acceleration. The native OpenMP kernel c
 
 Generate the analytic sample image and reconstruct it in one command:
 
-```powershell
+```cmd
 python examples/generate_sample.py
 python cli.py ^
   --image examples/sample_spectrum.png ^
   --output-dir output/quickstart ^
   --mode fidelity ^
   --max-iter 8 ^
-  --export-png --export-svg --export-bundle
+  --export-csv --export-png --export-svg --export-bundle
 ```
 
 Expected console output:
@@ -92,7 +92,7 @@ Verify the exported model independently (only NumPy and Pillow are needed):
 ```powershell
 python output/quickstart/bundle/verify.py
 # Exported model determinism and metadata verified.
-# Verification PASSED
+# Determinism sanity check PASSED (model fidelity is reported in the PDF, not asserted here)
 ```
 
 Run symbolic discovery instead:
@@ -138,13 +138,13 @@ flowchart TD
 ## Testing and verification
 
 ```powershell
-python -m pytest                 # 547 tests: 193 unit + 354 end-to-end
+python -m pytest                 # 561 tests: 207 unit + 354 end-to-end
 python -m pytest tests/          # unit / integration suite
 python -m pytest -m tier1        # feature-coverage e2e tier
 python -m ruff check .           # static analysis
 ```
 
-The suite runs fully offline (`pytest-socket` enforces this). It includes behavioural regression tests for evaluator dtype correctness, B-spline/rational equation export parity, solver boundaries, partition-of-unity continuity, worker reuse, signal delivery and cancellation, UI state machines, deterministic bundles and exporter honesty. Import failures fail loudly: the end-to-end tiers contain no `ImportError`-driven skip guards, and the only skips are five explicit CUDA/native-DLL capability checks. A meta-test (`tests/test_suite_hygiene.py`) enforces this.
+The suite runs fully offline (`pytest-socket` enforces this). It includes behavioural regression tests for evaluator dtype correctness, B-spline/rational equation export parity, solver boundaries, partition-of-unity continuity, worker reuse, signal delivery and cancellation, UI state machines, deterministic bundles and exporter honesty. Import failures fail loudly: the end-to-end tiers contain no `ImportError`-driven skip guards, and skips are reserved for explicit optional-backend availability checks (CUDA/native DLL/matplotlib). A meta-test (`tests/test_suite_hygiene.py`) enforces this.
 
 For empirical comparisons, `benchmarks/` provides five classical baselines and four real ablation studies; every ablation config key is consumed by `ModeBPipeline`. The importable runner repeats each workload after discarded warmups and reports mean, sample standard deviation, median and a 95% confidence interval:
 

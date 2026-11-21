@@ -59,7 +59,10 @@ class MainWorkspace:
                 if source.ndim != 3 or source.shape[2] not in (3, 4):
                     self._status_text = "Unsupported image format"
                     return False
-                arr = source.copy()
+                if source.shape[2] == 4:
+                    arr = source[:, :, :3].copy()
+                else:
+                    arr = source.copy()
                 h, w = arr.shape[:2]
             else:
                 self._status_text = "Unsupported image format"
@@ -83,7 +86,7 @@ class MainWorkspace:
 
     def update_preview(self, preview: np.ndarray) -> None:
         """Update viewport preview buffer."""
-        self._preview_buffer = np.asarray(preview)
+        self._preview_buffer = np.array(preview, copy=True)
 
     def get_preview_buffer(self) -> np.ndarray:
         """Retrieve current viewport preview buffer."""

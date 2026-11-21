@@ -180,7 +180,10 @@ class LevenbergMarquardtOptimizer:
 
             # Gain ratio rho
             actual_reduction = cost - cost_cand
-            denom = float(delta.T @ (mu * delta - g))
+            # Predicted reduction of the *damped* subproblem that was solved:
+            # 0.5*d'H*d + d'D*d, where D = mu*max(diag(H), 1e-6).
+            damping = mu * np.maximum(diag_H, 1e-6)
+            denom = 0.5 * float(delta.T @ (H @ delta)) + float(delta.T @ (damping * delta))
             rho = (actual_reduction / denom) if abs(denom) > 1e-15 else 0.0
 
             if rho > 0:

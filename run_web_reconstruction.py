@@ -1,8 +1,10 @@
 """
 run_web_reconstruction.py
 
-Execute maximum-fidelity Mode B reconstruction on the web-fetched photograph:
-Monarch in May (Danaus plexippus) from Wikimedia Commons.
+Execute maximum-fidelity Mode B reconstruction on an analytic sample image.
+
+By default the deterministic sample from examples/ is used; pass ``--image``
+to reconstruct a different source (for example a locally stored photograph).
 
 Generates complete suite of 10 deliverables:
 1. Native continuous raster reconstruction (PNG, JPG)
@@ -29,6 +31,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from cli import _format_mode_b_channel
 from mathfield.core.domain import CoordinateDomain2D, DomainMode
 from mathfield.core.pipeline.mode_b import ModeBPipeline
 from mathfield.core.pipeline.stage import PipelineContext
@@ -43,7 +46,7 @@ from mathfield.export.raster import export_jpg, export_png
 from mathfield.export.svg import export_svg
 
 REPO_ROOT = Path(__file__).resolve().parent
-INPUT_IMAGE = REPO_ROOT / "output/web_reconstruction/monarch_source.png"
+INPUT_IMAGE = REPO_ROOT / "examples/sample_spectrum.png"
 OUTPUT_DIR = REPO_ROOT / "output/web_reconstruction"
 ARTIFACT_DIR: Path | None = None
 
@@ -271,6 +274,12 @@ def main(argv: list[str] | None = None) -> None:
         "G": format_global_channel(1),
         "B": format_global_channel(2),
     }
+    # Machine-readable ASCII form for standalone reproduction scripts; the
+    # human form above is used for reports and posters.
+    machine_expressions = {
+        channel: _format_mode_b_channel(ctx.global_model, index)
+        for index, channel in enumerate("RGB")
+    }
 
     # 3. Extract explicit analytical formulas for all discovered local patches
     def format_patch_formula(patch: Any, max_terms: int = 5) -> str:
@@ -366,9 +375,9 @@ def main(argv: list[str] | None = None) -> None:
         "patch_equations": patch_equations_sorted,
         "expressions": {
             "formula": f"chebyshev2d_deg_{config['global_degree']} + fourier2d_freq_{config['fourier_freq']} + quadtree_dct2_local_patches",
-            "R": global_equations["R"],
-            "G": global_equations["G"],
-            "B": global_equations["B"],
+            "R": machine_expressions["R"],
+            "G": machine_expressions["G"],
+            "B": machine_expressions["B"],
         },
         "parameters": parameters_dict,
         "metrics": metrics,

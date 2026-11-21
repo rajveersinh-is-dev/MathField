@@ -1,7 +1,11 @@
 """
 run_lotus_reconstruction.py
 
-Execute maximum-quality Mode B reconstruction on the user-uploaded water lily / lotus image.
+Execute maximum-quality Mode B reconstruction on an analytic sample image.
+
+The historical ``lotus_*`` artifact names are retained for compatibility; with
+default options the actual input is examples/sample_spectrum.png. Supply
+``--image`` to reconstruct a different photograph.
 Generates full suite of deliverables:
 - High-fidelity continuous raster reconstruction (PNG, JPG)
 - Continuous mathematical super-resolved rendering (2x resolution from equations)
@@ -24,6 +28,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from cli import _format_mode_b_channel
 from mathfield.core.domain import CoordinateDomain2D, DomainMode
 from mathfield.core.pipeline.mode_b import ModeBPipeline
 from mathfield.core.pipeline.stage import PipelineContext
@@ -266,6 +271,10 @@ def main(argv: list[str] | None = None) -> None:
         "G": format_global_channel(1),
         "B": format_global_channel(2),
     }
+    machine_expressions = {
+        channel: _format_mode_b_channel(ctx.global_model, index)
+        for index, channel in enumerate("RGB")
+    }
 
     # 3. Extract explicit analytical formulas for all discovered local patches
     def format_patch_formula(patch: Any, max_terms: int = 5) -> str:
@@ -361,9 +370,9 @@ def main(argv: list[str] | None = None) -> None:
         "patch_equations": patch_equations_sorted,
         "expressions": {
             "formula": f"chebyshev2d_deg_{config['global_degree']} + fourier2d_freq_{config['fourier_freq']} + quadtree_dct2_local_patches",
-            "R": global_equations["R"],
-            "G": global_equations["G"],
-            "B": global_equations["B"],
+            "R": machine_expressions["R"],
+            "G": machine_expressions["G"],
+            "B": machine_expressions["B"],
         },
         "parameters": parameters_dict,
         "metrics": metrics,
@@ -430,15 +439,35 @@ def main(argv: list[str] | None = None) -> None:
     print("✔ Exported reproducibility_bundle.zip (Complete standalone archive)")
 
     # 9. Mathematical Artwork Posters (Hamid Naderi Yeganeh Style)
-    export_artwork_poster(export_result, OUTPUT_DIR / "lotus_mathematical_artwork.png", layout="square", width=1600)
     export_artwork_poster(
-        export_result, OUTPUT_DIR / "lotus_mathematical_artwork.jpg", layout="square", width=1600, quality=95
+        export_result,
+        OUTPUT_DIR / "lotus_mathematical_artwork.png",
+        layout="square",
+        title="Analytic Spectrum by MathField",
+        width=1600,
     )
     export_artwork_poster(
-        export_result, OUTPUT_DIR / "lotus_mathematical_artwork_portrait.png", layout="portrait", width=1200
+        export_result,
+        OUTPUT_DIR / "lotus_mathematical_artwork.jpg",
+        layout="square",
+        title="Analytic Spectrum by MathField",
+        width=1600,
+        quality=95,
     )
     export_artwork_poster(
-        export_result, OUTPUT_DIR / "lotus_mathematical_artwork_portrait.jpg", layout="portrait", width=1200, quality=95
+        export_result,
+        OUTPUT_DIR / "lotus_mathematical_artwork_portrait.png",
+        layout="portrait",
+        title="Analytic Spectrum by MathField",
+        width=1200,
+    )
+    export_artwork_poster(
+        export_result,
+        OUTPUT_DIR / "lotus_mathematical_artwork_portrait.jpg",
+        layout="portrait",
+        title="Analytic Spectrum by MathField",
+        width=1200,
+        quality=95,
     )
     print("✔ Exported lotus_mathematical_artwork (Square & Portrait posters in Hamid Naderi Yeganeh style)")
 

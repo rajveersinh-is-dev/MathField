@@ -46,6 +46,10 @@ def generate_math_panel(
     domain = result.get("coordinate_domain", {})
     pw = domain.get("pixel_width") or domain.get("width")
     ph = domain.get("pixel_height") or domain.get("height")
+    x_min = float(domain.get("x_min", -float(pw) / float(ph or 1))) if pw and ph else -1.0
+    x_max = float(domain.get("x_max", float(pw) / float(ph or 1))) if pw and ph else 1.0
+    y_min = float(domain.get("y_min", -1.0))
+    y_max = float(domain.get("y_max", 1.0))
     if pw is None or ph is None:
         recon_data = result.get("reconstructed_image") or result.get("rendered_image")
         if isinstance(recon_data, np.ndarray):
@@ -58,10 +62,19 @@ def generate_math_panel(
     global_eqs = result.get("global_equations") or {}
     patch_eqs = result.get("patch_equations") or []
     expressions = result.get("expressions") or {}
+    model_degree = int((result.get("global_model") or {}).get("degree", 6))
+    overlap_factor = 1.20
+    if patch_eqs:
+        first_patch = patch_eqs[0]
+        bounds = first_patch.get("bounds") or (0.0, 0.0, 0.0, 0.0)
+        radius = first_patch.get("radius") or (0.0, 0.0)
+        half_width = (float(bounds[2]) - float(bounds[0])) / 2.0
+        if half_width > 0 and radius[0]:
+            overlap_factor = float(radius[0]) / half_width
 
     def _to_math_tex(eq_str: str) -> str:
         """Convert human-readable coefficient strings into valid mathtext."""
-        text = eq_str.replace("π", r"\pi").replace("·", r" \cdot ")
+        text = eq_str.replace("π", r"\pi ").replace("·", r" \cdot ")
         text = re.sub(r"T_(\d+)", r"T_{\1}", text)
         text = re.sub(r"\[(\d+) total terms\]", r"[\1 terms]", text)
         return text
@@ -136,7 +149,7 @@ def generate_math_panel(
         ),
         (
             0.79,
-            rf"$x = \frac{{2m - {pw + 1}}}{{{ph}}}, \quad y = \frac{{{ph + 1} - 2n}}{{{ph}}}, \quad F(u) = \left\lfloor 255 \cdot \max(0, \min(1, u)) \right\rfloor, \quad \mathrm{{and}}$",
+            rf"$x = {x_min:.6g} + \frac{{(m-1)({x_max - x_min:.6g})}}{{{pw - 1}}}, \quad y = {y_max:.6g} - \frac{{(n-1)({y_max - y_min:.6g})}}{{{ph - 1}}}, \quad F(u) = \left\lfloor 255 \cdot \max(0, \min(1, u)) \right\rfloor, \quad \mathrm{{and}}$",
             7.2,
             False,
         ),
@@ -148,13 +161,13 @@ def generate_math_panel(
         ),
         (
             0.63,
-            r"$G_c(x, y) = \sum_{i+j \leq 6} a_{i,j,c} T_i(x) T_j(y) + \sum_{k_x, k_y} \left[ b_{k_x,k_y,c} \cos(k_x \pi x + k_y \pi y) + d_{k_x,k_y,c} \sin(k_x \pi x + k_y \pi y) \right],$",
+            rf"$G_c(x, y) = \sum_{{i+j \leq {model_degree}}} a_{{i,j,c}} T_i(x) T_j(y) + \sum_{{k_x, k_y}} \left[ b_{{k_x,k_y,c}} \cos(k_x \pi x + k_y \pi y) + d_{{k_x,k_y,c}} \sin(k_x \pi x + k_y \pi y) \right],$",
             6.8,
             False,
         ),
         (
             0.55,
-            r"$w_k(x, y) = \psi_4\left(\frac{|x - c_{x,k}|}{R_{x,k}}\right) \psi_4\left(\frac{|y - c_{y,k}|}{R_{y,k}}\right), \quad \psi_4(r) = (1 - r)_+^4 (4r + 1), \quad (R_{x,k}, R_{y,k}) = 1.20 \cdot (h_{x,k}, h_{y,k}),$",
+            rf"$w_k(x, y) = \psi_4\left(\frac{{|x - c_{{x,k}}|}}{{R_{{x,k}}}}\right) \psi_4\left(\frac{{|y - c_{{y,k}}|}}{{R_{{y,k}}}}\right), \quad \psi_4(r) = (1 - r)_+^4 (4r + 1), \quad (R_{{x,k}}, R_{{y,k}}) = {overlap_factor:.3g} \cdot (h_{{x,k}}, h_{{y,k}}),$",
             6.5,
             False,
         ),

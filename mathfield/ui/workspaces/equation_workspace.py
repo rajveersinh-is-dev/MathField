@@ -9,6 +9,7 @@ AST node inspector, real-time parameter sliders with event debouncing, and formu
 from __future__ import annotations
 
 import io
+import math
 from typing import Any, Dict, List
 
 import numpy as np
@@ -94,8 +95,10 @@ class EquationWorkspace:
 
     def set_parameter_value(self, key: str, value: float) -> None:
         """Set bounded parameter slider value, clamping to finite range."""
-        clamped = float(np.clip(value, -1e6, 1e6))
-        self._parameters[key] = clamped
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            raise ValueError("Parameter value must be finite")
+        self._parameters[key] = float(np.clip(numeric, -1e6, 1e6))
 
     def get_parameter_value(self, key: str) -> float:
         """Retrieve current value for parameter slider."""

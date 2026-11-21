@@ -1022,8 +1022,8 @@ class TestFeature13EvaluatorBoundary:
             from mathfield.core.engine.cpu_native import is_native_available
 
             _ = is_native_available()
-        except ImportError:
-            pass  # Fallback verified
+        except ImportError as exc:
+            raise AssertionError("mathfield.core.engine.cpu_native must import") from exc
 
     def test_f13_t2_05_eval_nan_input_coordinates(self) -> None:
         """TC-F13-T2-05: All-NaN input coordinates propagates cleanly according to IEEE-754 without crash."""

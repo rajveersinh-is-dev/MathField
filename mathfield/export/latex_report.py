@@ -19,7 +19,7 @@ from mathfield.core.codegen.latex import to_latex
 
 def _human_equation_to_latex(equation: str) -> str:
     """Convert a human-readable discovered equation into AMS-LaTeX math."""
-    text = str(equation).replace("π", r"\pi").replace("·", r" \cdot ")
+    text = str(equation).replace("π", r"\pi ").replace("·", r" \cdot ")
     text = re.sub(r"T_(\d+)", r"T_{\1}", text)
     text = re.sub(r"\[(\d+) (?:total )?terms\]", r"\ [\1\ terms]", text)
     return text.replace("&", r"\&").replace("%", r"\%").replace("$", r"\$")

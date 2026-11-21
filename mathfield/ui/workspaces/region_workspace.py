@@ -124,13 +124,39 @@ class RegionWorkspace:
 
         return blended
 
-    def generate_heatmap(self, metric: str = "mse", shape: Tuple[int, int] = (64, 64)) -> np.ndarray:
+    def generate_heatmap(
+        self,
+        metric: str = "mse",
+        shape: Tuple[int, int] = (64, 64),
+        error_map: Optional[np.ndarray] = None,
+        synthetic: bool = True,
+    ) -> np.ndarray:
         """
-        Generate full-frame error heatmap for specified metric:
-        'mse', 'ssim', 'ciede2000', 'abs_diff', 'signed_diff'.
+        Generate a full-frame error heatmap for 'mse', 'ssim', 'ciede2000',
+        'abs_diff' or 'signed_diff'.
+
+        When ``error_map`` is supplied the result is derived from that real
+        residual field. Without it, and with ``synthetic=True``, the output is
+        an *illustrative* analytic pattern for UI demos - it is not a measured
+        reconstruction error. Pass ``synthetic=False`` to require real data.
         """
         norm_metric = metric.lower()
         self._current_metric = norm_metric
+        if error_map is not None:
+            residual = np.asarray(error_map, dtype=np.float64)
+            if norm_metric in ("mse", "mean_squared_error"):
+                return residual**2
+            if norm_metric == "abs_diff":
+                return np.abs(residual)
+            if norm_metric == "signed_diff":
+                return residual
+            if norm_metric == "ssim":
+                return 1.0 - np.minimum(np.abs(residual), 1.0)
+            if norm_metric == "ciede2000":
+                return np.abs(residual) * 100.0
+            raise ValueError(f"Unknown heatmap metric: {metric}")
+        if not synthetic:
+            raise ValueError("A real error_map is required when synthetic=False")
         h, w = shape
         x = np.linspace(-1.0, 1.0, w)
         y = np.linspace(-1.0, 1.0, h)

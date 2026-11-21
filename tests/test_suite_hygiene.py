@@ -16,7 +16,9 @@ def test_e2e_suites_do_not_mask_import_regressions() -> None:
     for path in TIERS:
         source = path.read_text(encoding="utf-8")
         # Import failures must fail the suite, never silently skip it.
-        assert not re.search(r"except \([^\n]*ImportError[^\n]*\):\s*\n\s*pytest\.skip", source)
+        assert not re.search(
+            r"except [^\n]*ImportError[^\n]*:\s*\n\s*(?:pass|return|pytest\.skip)", source
+        )
         # No vacuous existence-only assertions.
         assert "assert hasattr(" not in source
         # Only explicit hardware-capability skips remain (CUDA / native DLL).

@@ -16,7 +16,7 @@
 \maketitle
 
 \begin{abstract}
-We present \textbf{MathField}, an autonomous, research-grade computational framework for continuous mathematical image reconstruction. Given an arbitrary discrete raster image $I \in [0, 1]^{H \times W \times C}$, MathField discovers closed-form continuous coordinate fields $R(x, y)$, $G(x, y)$, $B(x, y)$, and $A(x, y)$ over continuous compact domains $[-1, 1]^2$. The engine operates without machine learning, neural networks, or pretrained black-box models, relying strictly on rigorous first-principles numerical algorithms. MathField provides two dual reconstruction modes: \emph{Mode A (Mathematical Discovery)}, which optimizes a complexity-regularized Pareto objective $J(M) = E(M) + \lambda C(M)$ to uncover interpretable symbolic equations via grammar-guided search and Variable Projection (VarPro); and \emph{Mode B (Maximum Fidelity)}, which combines dense orthogonal expansions with adaptive Sobolev-guided quadtree decomposition and Wendland $C^2$ partition of unity blending. We establish theoretical guarantees against Runge phenomena, condition matrix monitoring, and provide standalone reproduction scripts whose only runtime dependencies are NumPy and Pillow.
+We present \textbf{MathField}, an autonomous, research-grade computational framework for continuous mathematical image reconstruction. Given an arbitrary discrete raster image $I \in [0, 1]^{H \times W \times C}$, MathField discovers closed-form continuous coordinate fields $R(x, y)$, $G(x, y)$, $B(x, y)$, and $A(x, y)$ over continuous compact domains $[-1, 1]^2$. The engine operates without machine learning, neural networks, or pretrained black-box models, relying strictly on rigorous first-principles numerical algorithms. MathField provides two dual reconstruction modes: \emph{Mode A (Mathematical Discovery)}, which optimizes a complexity-regularized Pareto objective $J(M) = E(M) + \lambda C(M)$ to uncover interpretable symbolic equations via grammar-guided search and BIC pruning; and \emph{Mode B (Maximum Fidelity)}, which combines dense orthogonal expansions with adaptive Sobolev-guided quadtree decomposition and Wendland $C^2$ partition of unity blending. Condition numbers are monitored adaptively during fitting, and standalone reproduction scripts require only NumPy and Pillow.
 \end{abstract}
 
 \section{Introduction}
@@ -90,7 +90,7 @@ where $k$ measures symbolic expression tree complexity and parameter count, pena
 In strict adherence to computational honesty, MathField prohibits precomputed lookup tables, synthetic benchmark shortcuts, or memorized coefficients. Every benchmark and test reported in this work executes dynamically from first principles.
 
 \section{Conclusion}
-MathField demonstrates that deterministic numerical algorithms and classical mathematical analysis can achieve state-of-the-art continuous image reconstruction with mathematical transparency, numerical stability, and zero external cloud dependencies.
+MathField demonstrates that deterministic numerical algorithms and classical mathematical analysis can produce high-fidelity continuous image reconstructions with mathematical transparency, numerical stability, and zero external cloud dependencies. Quantitative comparisons against the classical baselines and ablations are generated dynamically by the included benchmark runner.
 
 \bibliographystyle{plain}
 \bibliography{references}

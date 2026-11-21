@@ -52,6 +52,15 @@ CUDA_PREAMBLE = r"""
 #define M_E 2.7182818284590452353602874713526624977
 #endif
 
+// NVRTC does not expose the host NAN macro; construct it bit-exactly.
+template <typename T> __device__ inline T mathfield_nan();
+template <> __device__ inline float mathfield_nan<float>() {
+    return __int_as_float(0x7fffffff);
+}
+template <> __device__ inline double mathfield_nan<double>() {
+    return __longlong_as_double(0x7ff8000000000000ULL);
+}
+
 template <typename T>
 __device__ inline T safe_div(T u, T v, T eps) {
     T s = (v >= (T)0.0) ? (T)1.0 : (T)-1.0;
@@ -72,7 +81,7 @@ __device__ inline T safe_exp(T x) {
 
 template <typename T>
 __device__ inline T safe_sqrt(T x) {
-    if (isnan(x)) return (T)0.0;
+    if (isnan(x)) return mathfield_nan<T>();
     return sqrt((x > (T)0.0) ? x : (T)0.0);
 }
 
@@ -83,7 +92,7 @@ __device__ inline T safe_cbrt(T x) {
 
 template <typename T>
 __device__ inline T safe_pow(T u, T v) {
-    if (isnan(u) || isnan(v)) return (T)0.0;
+    if (isnan(u) || isnan(v)) return mathfield_nan<T>();
     if (fabs(u) < (T)1e-15 && fabs(v) < (T)1e-15) return (T)1.0;
     T abs_u = (u >= (T)0.0) ? u : -u;
     if (abs_u < (T)1e-15) abs_u = (T)1e-15;

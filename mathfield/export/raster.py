@@ -6,9 +6,10 @@ Continuous-resolution raster image exporter (PNG with alpha channel, quality-sca
 
 from __future__ import annotations
 
+import re
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
 from PIL import Image
@@ -29,16 +30,10 @@ def to_uint8_array(arr: np.ndarray) -> np.ndarray:
     return np.clip(data, 0, 255).astype(np.uint8)
 
 
-def natural_key(name: str) -> Tuple[int, Union[int, str]]:
-    """Sort c0, c1, ..., c10 numerically instead of lexicographically."""
-    prefix = ""
-    digits = ""
-    for char in name:
-        if char.isdigit():
-            digits += char
-        else:
-            prefix += char
-    return (0, int(digits)) if digits else (1, name)
+def natural_key(name: str) -> tuple:
+    """Sort alternating text/number runs (c1, c2, ..., c10; p_000_t_01)."""
+    tokens = re.findall(r"\d+|\D+", name)
+    return tuple((0, int(token)) if token.isdigit() else (1, token) for token in tokens)
 
 
 def _model_to_image(

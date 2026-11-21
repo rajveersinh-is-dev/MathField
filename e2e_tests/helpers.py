@@ -268,7 +268,7 @@ def inspect_png(
     actual_has_alpha = "A" in mode
     variance = float(np.var(arr))
 
-    if expected_shape is not None and (width, height) != expected_shape and (height, width) != expected_shape:
+    if expected_shape is not None and (width, height) != tuple(expected_shape):
         raise AssertionError(f"Expected image dimensions {expected_shape}, got ({width}, {height})")
 
     if has_alpha is not None and actual_has_alpha != has_alpha:

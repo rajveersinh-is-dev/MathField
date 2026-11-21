@@ -186,7 +186,8 @@ class VarProOptimizer:
             Phi_cand, c_cand, r_cand, cost_cand, cond_cand = eval_subproblem(theta_cand)
 
             actual_reduction = cost - cost_cand
-            denom = float(delta.T @ (mu * delta - g))
+            damping = mu * np.maximum(diag_H, 1e-6)
+            denom = 0.5 * float(delta.T @ (H @ delta)) + float(delta.T @ (damping * delta))
             rho = (actual_reduction / denom) if abs(denom) > 1e-15 else 0.0
 
             if rho > 0:

@@ -653,5 +653,27 @@ def evaluate_tiled(
 
     if isinstance(dest_buffer, np.memmap):
         dest_buffer.flush()
+        if managed_memmap is not None:
+            # Expose an explicit cleanup path for internally owned temp files.
+            dest_buffer._memmap_manager = managed_memmap  # type: ignore[attr-defined]
 
     return dest_buffer
+
+
+def release_tiled_output(array: np.ndarray) -> None:
+    """Release a memmap returned by evaluate_tiled() and delete its temp file."""
+    import gc
+
+    manager = getattr(array, "_memmap_manager", None)
+    if manager is None:
+        return
+    try:
+        array.flush()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    try:
+        del array._memmap_manager  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    manager.close()
+    gc.collect()

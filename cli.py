@@ -76,7 +76,7 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--export-json",
         action="store_true",
-        help="Export .mathfield JSON project file",
+        help="Accepted for compatibility; the .mathfield project file is always written",
     )
     parser.add_argument(
         "--export-csv",
@@ -140,6 +140,18 @@ def _ast_constants(node: ASTNode) -> List[float]:
     return []
 
 
+def _chebyshev_expression(order: int, variable: str) -> str:
+    """Explicit polynomial for T_order(variable) via the Chebyshev recurrence."""
+    if order <= 0:
+        return "1"
+    if order == 1:
+        return variable
+    previous, current = "1", variable
+    for _ in range(2, order + 1):
+        previous, current = current, f"(2*{variable}*{current} - {previous})"
+    return current
+
+
 def _format_mode_b_channel(
     global_model: Dict[str, Any],
     channel: int,
@@ -172,8 +184,15 @@ def _format_mode_b_channel(
         if human:
             name = "1" if i == 0 and j == 0 else f"T_{i}(x)" if j == 0 else f"T_{j}(y)" if i == 0 else f"T_{i}(x)T_{j}(y)"
         else:
-            name = "1" if i == 0 and j == 0 else f"x^{i}" if j == 0 else f"y^{j}" if i == 0 else f"x^{i}*y^{j}"
-        terms.append((abs(value), f"{value:+.6g}*{name}" if not human else f"{value:+.4f}·{name}"))
+            if i == 0 and j == 0:
+                name = "1"
+            elif j == 0:
+                name = f"({_chebyshev_expression(int(i), 'x')})"
+            elif i == 0:
+                name = f"({_chebyshev_expression(int(j), 'y')})"
+            else:
+                name = f"({_chebyshev_expression(int(i), 'x')})*({_chebyshev_expression(int(j), 'y')})"
+        terms.append((abs(value), f"{value:+.17g}*{name}" if not human else f"{value:+.4f}·{name}"))
 
     base = cheb.num_terms
     for m, (kx, ky) in enumerate(fourier.freq_pairs):
@@ -193,7 +212,7 @@ def _format_mode_b_channel(
                 arg += ")"
         for value, func in ((cos_v, "cos"), (sin_v, "sin")):
             if abs(value) > 1e-4:
-                text = f"{value:+.6g}*{func}{arg}" if not human else f"{value:+.4f}·{func}{arg}"
+                text = f"{value:+.17g}*{func}{arg}" if not human else f"{value:+.4f}·{func}{arg}"
                 terms.append((abs(value), text))
 
     terms.sort(key=lambda item: item[0], reverse=True)

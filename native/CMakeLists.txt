@@ -18,10 +18,12 @@ else()
     target_compile_options(mathfield_kernels PRIVATE -O3 -Wall -Wextra -fPIC)
 endif()
 
-set_target_properties(mathfield_kernels PROPERTIES
-    OUTPUT_NAME "mathfield_kernels"
-    PREFIX ""
-)
+if(WIN32)
+    set_target_properties(mathfield_kernels PROPERTIES OUTPUT_NAME "mathfield_kernels" PREFIX "")
+else()
+    # POSIX shared libraries conventionally use the lib prefix, matching the loader.
+    set_target_properties(mathfield_kernels PROPERTIES OUTPUT_NAME "mathfield_kernels" PREFIX "lib")
+endif()
 
 set_target_properties(mathfield_kernels PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../mathfield/core/engine"

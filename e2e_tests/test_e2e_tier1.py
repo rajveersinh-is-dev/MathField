@@ -299,18 +299,17 @@ class TestFeature02ModeB:
 
         # Inspect parameter expansion density in project file
         proj_file = out_dir / "mathfield_out.mathfield"
-        if proj_file.exists():
-            data = json.loads(proj_file.read_text(encoding="utf-8"))
-            global_model = data.get("global_model", {})
-            deg = global_model.get("degree", 0)
-            terms = data.get("basis_terms_count", 0) or len(data.get("parameters", []))
-            assert deg >= 4 or terms >= 20, f"Dense basis expansion expected, got degree={deg}, terms={terms}"
+        assert proj_file.is_file(), "--export-json project file was not written"
+        data = json.loads(proj_file.read_text(encoding="utf-8"))
+        global_model = data.get("global_model", {})
+        deg = global_model.get("degree", 0)
+        terms = data.get("basis_terms_count", 0) or len(data.get("parameters", []))
+        assert deg >= 4 or terms >= 20, f"Dense basis expansion expected, got degree={deg}, terms={terms}"
 
-        # Inspect parameter CSV table if exported
         csv_file = out_dir / "parameters.csv"
-        if csv_file.exists():
-            csv_data = inspect_csv_parameters(csv_file)
-            assert len(csv_data) >= 20, "Expected dense basis expansion with > 20 parameters"
+        assert csv_file.is_file(), "--export-csv table was not written"
+        csv_data = inspect_csv_parameters(csv_file)
+        assert len(csv_data) >= 20, "Expected dense basis expansion with > 20 parameters"
 
     def test_f02_03_mode_b_piecewise_corrections(self, synth_checker: Path, e2e_temp_dir: Path) -> None:
         """TC-F02-03: Local decomposition triggers on high-contrast edges."""

@@ -237,7 +237,7 @@ class CheckpointManager:
         if len(all_chk) <= keep_count:
             return []
 
-        to_remove = all_chk[:-keep_count]
+        to_remove = list(all_chk) if keep_count <= 0 else all_chk[:-keep_count]
         removed_paths = []
         for path_str in to_remove:
             p = Path(path_str)
