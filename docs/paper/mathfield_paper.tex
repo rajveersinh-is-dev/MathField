@@ -2,6 +2,7 @@
 
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{graphicx}
+\usepackage{tikz}
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage{microtype}
@@ -15,20 +16,20 @@
 \maketitle
 
 \begin{abstract}
-We present \textbf{MathField}, an autonomous, research-grade computational framework for continuous mathematical image reconstruction. Given an arbitrary discrete raster image $I \in [0, 1]^{H \times W \times C}$, MathField discovers closed-form continuous coordinate fields $R(x, y)$, $G(x, y)$, $B(x, y)$, and $A(x, y)$ over continuous compact domains $[-1, 1]^2$. The engine operates without machine learning, neural networks, or pretrained black-box models, relying strictly on rigorous first-principles numerical algorithms. MathField provides two dual reconstruction modes: \emph{Mode A (Mathematical Discovery)}, which optimizes a complexity-regularized Pareto objective $J(M) = E(M) + \lambda C(M)$ to uncover interpretable symbolic equations via grammar-guided search and Variable Projection (VarPro); and \emph{Mode B (Maximum Fidelity)}, which combines dense orthogonal expansions with adaptive Sobolev-guided quadtree decomposition and Wendland $C^2$ partition of unity blending. We establish theoretical guarantees against Runge phenomena, condition matrix monitoring, and provide zero-dependency standalone reproduction packages.
+We present \textbf{MathField}, an autonomous, research-grade computational framework for continuous mathematical image reconstruction. Given an arbitrary discrete raster image $I \in [0, 1]^{H \times W \times C}$, MathField discovers closed-form continuous coordinate fields $R(x, y)$, $G(x, y)$, $B(x, y)$, and $A(x, y)$ over continuous compact domains $[-1, 1]^2$. The engine operates without machine learning, neural networks, or pretrained black-box models, relying strictly on rigorous first-principles numerical algorithms. MathField provides two dual reconstruction modes: \emph{Mode A (Mathematical Discovery)}, which optimizes a complexity-regularized Pareto objective $J(M) = E(M) + \lambda C(M)$ to uncover interpretable symbolic equations via grammar-guided search and Variable Projection (VarPro); and \emph{Mode B (Maximum Fidelity)}, which combines dense orthogonal expansions with adaptive Sobolev-guided quadtree decomposition and Wendland $C^2$ partition of unity blending. We establish theoretical guarantees against Runge phenomena, condition matrix monitoring, and provide standalone reproduction scripts whose only runtime dependencies are NumPy and Pillow.
 \end{abstract}
 
 \section{Introduction}
-Digital image processing has historically relied upon discrete spatial pixel lattices. While discrete rasters are natural for sensor grids and digital displays, continuous mathematical representations offer resolution independence, infinite differentiability, and analytic interpretability \cite{chebyshev1854theorie, mallat1989theory}. 
+Digital image processing has historically relied upon discrete spatial pixel lattices. While discrete rasters are natural for sensor grids and digital displays, continuous mathematical representations offer resolution independence, closed-form derivatives up to the smoothness of the chosen basis, and analytic interpretability \cite{chebyshev1854theorie, mallat1989theory}. 
 
 Recent neural implicit representation approaches require deep neural networks, opaque weight matrices, and non-deterministic cloud inference. In contrast, MathField formulates image reconstruction as a purely classical, deterministic mathematical equation discovery problem. 
 
 \section{Mathematical Architecture}
 The continuous colour field is represented by a hierarchical composition:
 \begin{equation}
-F_c(x, y) = G_c(x, y) + \sum_{i=1}^{K} w_i(x, y) L_{i, c}(x, y)
+F_c(x, y) = G_c(x, y) + \frac{\sum_{k=1}^{K} w_k(x, y) L_{k, c}(x, y)}{\sum_{k=1}^{K} w_k(x, y)}
 \end{equation}
-where $c \in \{R, G, B, A\}$ denotes the colour channel, $G_c$ is a dense global basis expansion, $L_{i, c}$ is a localized basis correction patch, and $w_i(x, y)$ is a partition of unity weight function satisfying $\sum_{i=1}^{K} w_i(x, y) = 1$ everywhere on the domain \cite{wendland1995piecewise}.
+where $c \in \{R, G, B, A\}$ denotes the colour channel, $G_c$ is a dense global basis expansion, $L_{k, c}$ is a localized basis correction patch, and $w_k(x, y)$ is a compactly supported Wendland window. The normalized weights $\bar w_k = w_k / \sum_j w_j$ form a partition of unity: $\sum_k \bar w_k(x, y) = 1$ wherever the supports overlap \cite{wendland1995piecewise}.
 
 \subsection{Separable Nonlinear Optimization via VarPro}
 For symbolic expression trees with linear coefficients $c \in \mathbb{R}^p$ and nonlinear parameters $\alpha \in \mathbb{R}^q$, we decouple the optimization problem using the Variable Projection (VarPro) algorithm \cite{golub1973differentiation}:
@@ -39,7 +40,14 @@ This projection eliminates linear coefficients from the iterative gradient searc
 
 \begin{figure}[htbp]
 \centering
-\framebox[0.8\textwidth]{\texttt{[MathField Hierarchical Reconstruction Architecture Diagram]}}
+\begin{tikzpicture}[node distance=1.1cm, every node/.style={draw, rounded corners, align=center, font=\small}]
+\node (a) {1. Image\\Analysis};
+\node (b) [right=of a] {2. Global\\Expansion};
+\node (c) [right=of b] {3. Sobolev\\Quadtree};
+\node (d) [right=of c] {4. Wendland\\Blending};
+\node (e) [right=of d] {5. Verification\\\& Export};
+\draw[->] (a) -- (b); \draw[->] (b) -- (c); \draw[->] (c) -- (d); \draw[->] (d) -- (e);
+\end{tikzpicture}
 \caption{Schematic diagram of the 5-stage MathField reconstruction pipeline: Image Analysis, Global Expansion, Sobolev Quadtree Decomposition, Wendland Partition of Unity Blending, and Verification.}
 \label{fig:pipeline}
 \end{figure}
@@ -57,7 +65,16 @@ ensuring global $C^2$ continuity across all subdomain boundaries as illustrated 
 
 \begin{figure}[htbp]
 \centering
-\framebox[0.8\textwidth]{\texttt{[Adaptive Quadtree Spatial Subdomain Subdivision]}}
+\begin{tikzpicture}[scale=3.2, every node/.style={font=\tiny}]
+\draw (0,0) rectangle (1,1);
+\draw (0,0.5) -- (1,0.5); \draw (0.5,0.5) -- (0.5,1);
+\draw (0.5,0.5) -- (0.5,0); \draw (0,0.25) -- (0.5,0.25);
+\draw (0.75,0.5) -- (0.75,1); \draw (0.5,0.75) -- (1,0.75);
+\node at (0.25,0.75) {$L_1$};
+\node at (0.75,0.75) {$L_2$};
+\node at (0.25,0.125) {$L_3$};
+\node at (0.75,0.25) {$L_4$};
+\end{tikzpicture}
 \caption{Adaptive quadtree partitioning over high-frequency residual regions with overlapping Wendland support radii.}
 \label{fig:quadtree}
 \end{figure}

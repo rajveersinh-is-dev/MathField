@@ -80,7 +80,9 @@ class CheckpointSerializer:
             return out
 
         elif isinstance(params, dict):
-            out = {}
+            # Mark named dictionaries explicitly so deserialization can
+            # preserve names instead of silently collapsing them to an array.
+            out: Dict[str, Any] = {"__type__": "named_dict"}
             for k, v in params.items():
                 if isinstance(v, dict) and "hex" in v:
                     out[str(k)] = v
@@ -101,12 +103,26 @@ class CheckpointSerializer:
             raise TypeError(f"Unsupported parameter container type: {type(params)}")
 
     @classmethod
-    def deserialize_parameters(cls, data: Dict[str, Any]) -> np.ndarray:
+    def deserialize_parameters(cls, data: Dict[str, Any]) -> Union[np.ndarray, Dict[str, float]]:
         """
-        Deserialize parameters structure back to an exact numpy ndarray.
+        Deserialize parameters back to an exact numpy ndarray, or to an
+        ordered dict of floats for named parameter collections.
         """
         if not isinstance(data, dict):
             raise TypeError(f"Expected dict, got {type(data)}")
+
+        if data.get("__type__") == "named_dict":
+            named: Dict[str, float] = {}
+            for key, value in data.items():
+                if key.startswith("__"):
+                    continue
+                if isinstance(value, dict) and "hex" in value:
+                    named[key] = cls.deserialize_float(value["hex"])
+                elif isinstance(value, (int, float)):
+                    named[key] = float(value)
+                elif isinstance(value, str):
+                    named[key] = cls.deserialize_float(value)
+            return named
 
         if "shape" in data and "hex" in data:
             hex_list = data["hex"]

@@ -1,107 +1,193 @@
-# MathField: Research-Grade Mathematical Image Reconstruction Engine
+# MathField
 
-**MathField** is an autonomous Windows desktop application and computational research engine that discovers closed-form continuous mathematical equations:
+**Continuous mathematical image reconstruction — from pixels to closed-form equations.**
 
-$$R(x, y) = f_R(x, y), \quad G(x, y) = f_G(x, y), \quad B(x, y) = f_B(x, y), \quad A(x, y) = f_A(x, y)$$
+MathField discovers explicit continuous colour fields
 
-that evaluate and plot over continuous 2D coordinate domains to reconstruct arbitrary digital images.
+$$
+R(x,y)=f_R(x,y),\quad G(x,y)=f_G(x,y),\quad B(x,y)=f_B(x,y),\quad A(x,y)=f_A(x,y)
+$$
 
-MathField operates strictly without machine learning, neural networks, pretrained weights, or external cloud AI APIs. All representations are discovered from first principles using rigorous mathematical and numerical algorithms.
-
----
-
-## Key Features
-
-1. **Two Independent Reconstruction Modes**:
-   - **Mode A (Mathematical Discovery)**: Discovers compact, interpretable mathematical formulas balancing error and complexity via Pareto optimization: $J(M) = E(M) + \lambda C(M)$.
-   - **Mode B (Maximum Fidelity)**: Maximizes reproduction accuracy using dense orthogonal polynomial expansions, harmonic Fourier series, adaptive Sobolev-guided quadtree decomposition, and Wendland $C^2$ partition of unity blending.
-2. **Multi-Tier Acceleration Engine**:
-   - Vectorized CPU NumPy engine.
-   - Compiled native C++/OpenMP kernels with fallback (`mathfield_kernels.dll`).
-   - High-throughput CUDA GPU kernel evaluator with functional CPU fallback.
-3. **Infinite-Resolution & 8K Streaming Tiler**:
-   - Out-of-core block tiling supporting images up to 8K resolution ($8192 \times 8192$) within bounded memory limits.
-4. **Interactive Windows Desktop UI**:
-   - Viewport with pan, zoom (0.1x to 50x), and side-by-side curtain split comparison.
-   - Equation workspace with interactive AST inspector and real-time mathtext card rendering.
-   - Region analysis workspace with rubber-band ROI selection and 5 full-frame error heatmaps (MSE, SSIM, CIEDE2000, signed diff, abs diff).
-   - Optimization workspace with telemetry and pause/resume/cancel controls.
-   - Research workspace with hypothesis audit trail and SVD singular value spectrum monitoring.
-5. **Comprehensive Standalone Export Suite**:
-   - PNG and JPG raster exports with metadata.
-   - Documented SVG vector files.
-   - Zero-dependency standalone Python reproduction scripts.
-   - Compilable LaTeX mathematical reports and PDF reports.
-   - Parameter CSV tables and JSON project files (`.mathfield`).
-   - Complete reproducibility package bundles (`.zip`).
+that reproduce a discrete raster image when evaluated on a continuous 2D domain. It is a deterministic, first-principles research engine: **no machine learning, no neural networks, no pretrained weights and no cloud AI APIs** are used anywhere in the pipeline.
 
 ---
 
-## Architecture & Subsystems
+## Demo
 
-```mermaid
-graph TD
-    A[Input Image] --> B[Stage 1: Image Analysis]
-    B --> C{Reconstruction Mode}
-    C -->|Mode A: Discovery| D[Symbolic AST Search & VarPro]
-    C -->|Mode B: Fidelity| E[Dense Chebyshev + Fourier Expansion]
-    E --> F[Sobolev-Guided Quadtree Decomposition]
-    F --> G[Wendland C2 Partition of Unity Blending]
-    D --> H[Complexity Refinement & BIC Pruning]
-    G --> I[Joint Surface Composite]
-    H --> J[Verification & Metrics]
-    I --> J
-    J --> K[Export Suite & Standalone Bundles]
-```
+[![MathField demo video](docs/demo/preview.png)](docs/demo/demo.mp4)
 
-MathField is structured into 6 primary subsystems:
-- **Core AST & Grammar** (`mathfield/core/ast/`): Safe Pratt expression parser, AST nodes, symbolic differentiation, and validation.
-- **Basis Systems** (`mathfield/core/basis/`): Chebyshev 2D, Legendre, Fourier harmonics, DCT-II, Splines, and RBFs.
-- **Hierarchical Pipeline** (`mathfield/core/pipeline/`): Mode A and Mode B multi-stage orchestration.
-- **Evaluation & Native Kernels** (`mathfield/core/engine/`): Vectorized NumPy, C++ DLL, and CUDA kernels.
-- **Export Framework** (`mathfield/export/`): Standalone Python script, LaTeX, PDF, SVG, PNG/JPG, CSV, and bundle generators.
-- **Desktop UI Workspaces** (`mathfield/ui/`): High-performance Qt workspaces and non-blocking background workers.
+**[Watch the demo video (MP4, 10 s, 960×540)](docs/demo/demo.mp4)**
 
----
-
-## Windows Installation & Quickstart
-
-### Prerequisites
-- Windows 10 or Windows 11 (64-bit)
-- Python 3.10+ (tested on Python 3.14)
-- NVIDIA CUDA Toolkit 11.8+ (optional, for GPU acceleration)
-- Microsoft Visual C++ Build Tools (optional, for native kernel compilation)
-
-### Quickstart (Windows PowerShell)
+The clip is generated from a live reconstruction: a deterministic analytic test image is fitted by Mode B, then the video shows the target, the progressive reconstruction, a curtain comparison, the amplified error field and the leading discovered equations. To regenerate it:
 
 ```powershell
-# Clone or navigate to the repository
-cd c:\Users\davea\OneDrive\Desktop\MathField
-
-# Run Mode A (Mathematical Discovery)
-python cli.py --image path\to\input.png --mode discovery --output-dir out_discovery --export-bundle
-
-# Run Mode B (Maximum Fidelity)
-python cli.py --image path\to\input.png --mode fidelity --output-dir out_fidelity --export-bundle --export-pdf
-
-# Run all test suites
-python -m pytest tests/
-python -m pytest e2e_tests/test_e2e_tier1.py
+python docs/demo/make_demo.py
 ```
 
----
-
-## Computational Honesty & Scientific Integrity
-
-MathField adheres strictly to computational honesty:
-- **Zero Preloaded Constants**: No lookup tables, precalculated answers, or hardcoded image approximations disguised as equations.
-- **Dynamic Execution**: All representations, metric curves, and benchmarks are evaluated strictly from first principles on unadulterated workloads.
-- **Verifiable Reproducibility**: Exported standalone reproduction scripts execute cleanly with zero dependencies on MathField.
-
-For technical details, see the draft manuscript at [docs/paper/mathfield_paper.tex](docs/paper/mathfield_paper.tex).
+(Requires `imageio-ffmpeg` or `ffmpeg` on `PATH`; see the [development setup](#development).)
 
 ---
+
+## Why MathField?
+
+| Capability | What it does |
+| :--- | :--- |
+| **Mode A — discovery** | Pareto-optimal symbolic search with BIC pruning and Variable Projection, balancing error and complexity via $J(M)=E(M)+\lambda C(M)$. |
+| **Mode B — fidelity** | Dense Chebyshev + Fourier expansions, Sobolev-guided adaptive quadtree patches and separable Wendland $C^2$ partition-of-unity blending. |
+| **Multi-tier evaluation** | Vectorised NumPy, an optional native C++/OpenMP kernel and an optional CUDA backend, with automatic fallback. |
+| **Out-of-core tiling** | Bounded-memory tiled/memmapped rendering for images up to 8K. |
+| **Standalone exports** | PNG/JPG, SVG, CSV, LaTeX, PDF, `.mathfield` JSON, zero-import reproduction scripts and deterministic reproducibility bundles. |
+| **Headless UI workspaces** | Main, Equation, Region, Optimization and Research workspaces with background workers, cancellation and telemetry. No Qt binding is required to run them. |
+
+---
+
+## Installation
+
+```powershell
+# Python 3.10+ (tested on 3.14)
+python -m pip install -e .
+python -m pip install -e ".[dev]"   # tests, linting, demo-video tooling
+```
+
+Optional extras: `.[gpu]` for CuPy/CUDA acceleration. The native OpenMP kernel can be rebuilt from `native/` with CMake and MSVC; the engine works without it.
+
+---
+
+## Quickstart — a fresh, fully reproducible example
+
+Generate the analytic sample image and reconstruct it in one command:
+
+```powershell
+python examples/generate_sample.py
+python cli.py ^
+  --image examples/sample_spectrum.png ^
+  --output-dir output/quickstart ^
+  --mode fidelity ^
+  --max-iter 8 ^
+  --export-png --export-svg --export-bundle
+```
+
+Expected console output:
+
+```text
+[1/5] Stage 1: Image Analysis
+[2/5] Stage 2: Dense Global Expansion
+[3/5] Stage 3: Quadtree Local Decomposition
+[4/5] Stage 4: Local Patch Blending
+[5/5] Stage 5: Verification & Reporting
+Reconstruction completed. Project saved to: output\quickstart\mathfield_out.mathfield
+Final MSE: 0.000045, PSNR: 43.46 dB
+```
+
+Deliverables written to `output/quickstart/`:
+
+```text
+mathfield_out.mathfield   reconstruction.png    reconstruction.svg
+parameters.csv            bundle/{reproduce.py, verify.py, project.mathfield,
+                                  parameters.csv, report.pdf, report.tex, README.md}
+```
+
+Verify the exported model independently (only NumPy and Pillow are needed):
+
+```powershell
+python output/quickstart/bundle/verify.py
+# Exported model determinism and metadata verified.
+# Verification PASSED
+```
+
+Run symbolic discovery instead:
+
+```powershell
+python cli.py -i examples/sample_spectrum.png -o output/discovery -m discovery --max-iter 20
+```
+
+Common flags: `--lambda-reg` (regularisation, applied in both modes), `--max-iter`, `--tolerance`, `--seed`, `--export-json/--export-csv/--export-png/--export-jpg/--export-svg/--export-pdf/--export-latex/--export-bundle`, `--quiet`.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[Input image] --> B[Stage 1: image analysis]
+    B --> C{Reconstruction mode}
+    C -->|Mode A| D[Symbolic AST search + VarPro + BIC pruning]
+    C -->|Mode B| E[Dense Chebyshev + Fourier expansion]
+    E --> F[Sobolev-guided quadtree decomposition]
+    F --> G[Wendland C2 partition-of-unity blend]
+    D --> H[Stage 5: metrics and verification]
+    G --> H
+    H --> I[Export suite and reproducibility bundles]
+```
+
+| Subsystem | Location |
+| :--- | :--- |
+| Safe Pratt parser, AST, symbolic differentiation, domain protection | `mathfield/core/ast/` |
+| Chebyshev, Legendre, Fourier, DCT, splines, RBFs, rationals | `mathfield/core/basis/` |
+| Quadtree, local patches, partition of unity | `mathfield/core/local/` |
+| Solvers, VarPro, conditioning, evolutionary search | `mathfield/core/optimize/` |
+| NumPy / native / CUDA evaluators, 8K tiler | `mathfield/core/engine/` |
+| Metrics, pruning, independent reference renderer | `mathfield/core/verify/` |
+| Mode A / Mode B pipelines and controller | `mathfield/core/pipeline/` |
+| Bit-exact checkpointing and AST/LaTeX/NumPy code generation | `mathfield/core/checkpoint/`, `mathfield/core/codegen/` |
+| Exporters and standalone bundles | `mathfield/export/` |
+| Headless workspaces and background workers | `mathfield/ui/` |
+
+---
+
+## Testing and verification
+
+```powershell
+python -m pytest                 # 547 tests: 193 unit + 354 end-to-end
+python -m pytest tests/          # unit / integration suite
+python -m pytest -m tier1        # feature-coverage e2e tier
+python -m ruff check .           # static analysis
+```
+
+The suite runs fully offline (`pytest-socket` enforces this). It includes behavioural regression tests for evaluator dtype correctness, B-spline/rational equation export parity, solver boundaries, partition-of-unity continuity, worker reuse, signal delivery and cancellation, UI state machines, deterministic bundles and exporter honesty. Import failures fail loudly: the end-to-end tiers contain no `ImportError`-driven skip guards, and the only skips are five explicit CUDA/native-DLL capability checks. A meta-test (`tests/test_suite_hygiene.py`) enforces this.
+
+For empirical comparisons, `benchmarks/` provides five classical baselines and four real ablation studies; every ablation config key is consumed by `ModeBPipeline`. The importable runner repeats each workload after discarded warmups and reports mean, sample standard deviation, median and a 95% confidence interval:
+
+```powershell
+python -m benchmarks.run_benchmarks --warmup-runs 3 --timed-runs 7 --output benchmarks.json
+```
+
+```python
+from benchmarks import BenchmarkRunner, run_benchmarks
+
+report = run_benchmarks(image, warmup_runs=3, timed_runs=7)
+# report["baselines"][0]["mean_ms"] / ["std_ms"] / ["ci95_ms"]
+```
+
+`num_parameters` in every baseline result is the **total** fitted coefficient count across all colour channels, computed from the actual fitted representation.
+
+---
+
+## Computational honesty
+
+* **Zero preloaded answers** — no lookup tables, hardcoded coefficients or memorised image approximations.
+* **Dynamic first-principles evaluation** — metrics, benchmarks and exported formulas are computed from the fitted model at run time.
+* **Verifiable reproducibility** — generated bundles contain deterministic archives and scripts that evaluate the exported equations without importing MathField. The full local-patch model is preserved in the `.mathfield` project file.
+
+Draft manuscript: [`docs/paper/mathfield_paper.tex`](docs/paper/mathfield_paper.tex).
+
+---
+
+## Project layout
+
+```text
+examples/        reproducible sample-image generator
+docs/demo/       demo video generator, preview and MP4
+docs/paper/      draft LaTeX manuscript
+mathfield/       engine package (core, export, ui)
+tests/           unit and regression tests
+e2e_tests/       offline opaque-box end-to-end tiers 1-4
+benchmarks/      classical baselines and ablation studies
+native/          optional C++/OpenMP kernel source
+output/          generated example artefacts
+cli.py           command-line entry point
+```
 
 ## License
 
-MathField is open research software released under the MIT License.
+MathField is released under the MIT License.

@@ -132,39 +132,71 @@ class Rational2D(BasisFunction2D):
         tol: float = 1e-6,
     ) -> None:
         """
-        Fit rational function using iterative Sanathanan-Koerner (SK) linear least squares:
-        min || (P - y * Q) / Q_prev ||^2
+        Fit the rational model that evaluate()/to_ast() actually implement.
+
+        For the pole-free parameterization Q = 1 + q^2 the model is nonlinear in
+        the denominator coefficients. We use the Sanathanan-Koerner weighting
+        together with a first-order expansion of Q around the previous iterate:
+
+            Q(q) ~= 1 - q_prev^2 + 2 * q_prev * q
+
+        so each step is still a linear least-squares problem in [a; b], while
+        the fitted coefficients remain consistent with evaluation and export.
         """
-        y_flat = target.ravel()
+        y_flat = np.asarray(target, dtype=np.float64).ravel()
         n_num = len(self.num_coeffs)
         n_den = len(self.den_coeffs)
 
         Phi_num = self._eval_monomials(X, Y, n_num)
         Phi_den = self._eval_monomials(X, Y, n_den)
 
-        # Initialize Q_prev = 1.0
-        q_prev = np.ones(y_flat.size, dtype=np.float64)
+        q_lin = Phi_den @ self.den_coeffs
+        # A zero initial linear denominator makes all denominator columns of
+        # the linearized system vanish. Seed it with a small deterministic
+        # perturbation so the denominator is identifiable from the first step.
+        if np.max(np.abs(q_lin)) < 1e-12:
+            q_lin = np.full(y_flat.size, 0.05, dtype=np.float64)
 
         for _ in range(max_iter):
-            # Form weighted system: [Phi_num / q_prev, -(Phi_den * y) / q_prev] [a; b] = y / q_prev
-            A_num = Phi_num / q_prev[:, np.newaxis]
-            A_den = -(Phi_den * y_flat[:, np.newaxis]) / q_prev[:, np.newaxis]
-            A = np.hstack([A_num, A_den])
-            b_vec = y_flat / q_prev
+            q_prev = q_lin
+            q_prev_sq = q_prev * q_prev
+            q_den = np.maximum(1.0 + q_prev_sq, 1e-6)
 
-            # Solve regularized least squares
-            sol, _, _, _ = np.linalg.lstsq(A, b_vec, rcond=1e-10)
+            if self.positive_denominator:
+                # Q = 1 + q^2 is nonlinear in b, so solve the weighted
+                # nonlinear least-squares problem directly. The weights are
+                # refreshed from the previous SK iterate (iteratively
+                # reweighted least squares), matching the SK objective.
+                from scipy.optimize import least_squares
 
-            self.num_coeffs = sol[:n_num]
-            self.den_coeffs = sol[n_num:]
+                weights = np.sqrt(q_den)
 
-            q_new = 1.0 + (Phi_den @ self.den_coeffs)
-            q_new = np.maximum(np.abs(q_new), 1e-6)
+                def residual(theta: np.ndarray, w: np.ndarray = weights) -> np.ndarray:
+                    q = Phi_den @ theta[n_num:]
+                    model_q = 1.0 + q * q
+                    return (Phi_num @ theta[:n_num] - y_flat * model_q) / w
 
-            diff = np.max(np.abs(q_new - q_prev))
-            q_prev = q_new
-            if diff < tol:
+                theta0 = np.concatenate([self.num_coeffs, self.den_coeffs])
+                sol = least_squares(residual, theta0, max_nfev=200, xtol=tol, ftol=tol, gtol=tol)
+                self.num_coeffs = sol.x[:n_num]
+                self.den_coeffs = sol.x[n_num:]
+            else:
+                # Linear denominator: standard SK step
+                # min ||(Phi_num a - y Phi_den b - y) / Q_prev||^2.
+                q_abs = np.maximum(np.abs(1.0 + q_lin), 1e-6)
+                A_num = Phi_num / q_abs[:, None]
+                A_den = -(Phi_den * y_flat[:, None]) / q_abs[:, None]
+                b_vec = y_flat / q_abs
+
+                sol, _, _, _ = np.linalg.lstsq(np.hstack([A_num, A_den]), b_vec, rcond=1e-10)
+                self.num_coeffs = sol[:n_num]
+                self.den_coeffs = sol[n_num:]
+
+            q_new = Phi_den @ self.den_coeffs
+            if np.max(np.abs(q_new - q_lin)) < tol:
+                q_lin = q_new
                 break
+            q_lin = q_new
 
     def to_ast(
         self,

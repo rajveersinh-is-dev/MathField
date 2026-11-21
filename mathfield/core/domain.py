@@ -97,12 +97,24 @@ class CoordinateDomain2D:
 
     def cell_size(self) -> Tuple[float, float]:
         """
-        Physical continuous cell spacing (dx, dy).
-        In isotropic mode with x in [-r, r] and y in [-1, 1], dx == dy == 2 / height.
+        Nominal cell size (domain span divided by the pixel count). In isotropic
+        mode this is identical for both axes and is the quantity used to size
+        kernels and local patch radii.
+
+        Note: to_discrete_grid uses an endpoint-inclusive linspace, so the
+        spacing between adjacent *sample points* is span / (n - 1). Use
+        node_spacing() when exact sample-point distances are required.
         """
         dx = (self.x_max - self.x_min) / float(self.width)
         dy = (self.y_max - self.y_min) / float(self.height)
         return (dx, dy)
+
+    def node_spacing(self) -> Tuple[float, float]:
+        """Exact spacing between adjacent linspace grid nodes (span / (n - 1))."""
+        return (
+            (self.x_max - self.x_min) / float(max(self.width - 1, 1)),
+            (self.y_max - self.y_min) / float(max(self.height - 1, 1)),
+        )
 
     def to_discrete_grid(
         self,

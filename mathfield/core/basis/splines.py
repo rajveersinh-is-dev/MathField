@@ -8,7 +8,7 @@ mathfield/core/basis/splines.py
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -159,8 +159,14 @@ class BSplineSurface2D(BasisFunction2D):
         prune_threshold: float = 1e-12,
     ) -> ASTNode:
         """
-        Emits AST representation using piecewise polynomial representation.
-        For general B-splines, control points are represented as parameters.
+        Emit the *exact* B-spline surface as a symbolic piecewise polynomial.
+
+        On every non-degenerate knot interval a degree-p B-spline surface is an
+        exact bivariate polynomial. The local monomial coefficients are solved
+        from sampled Cox-de Boor values, and narrow clamp-based indicators
+        stitch the intervals together. This reproduces evaluate() (including
+        repeated boundary knots), unlike the Gaussian surrogate that a previous
+        version emitted.
         """
         c = self._coefficients if coefficients is None else np.asarray(coefficients, dtype=np.float64).ravel()
         if len(c) < self.num_terms:
@@ -170,41 +176,82 @@ class BSplineSurface2D(BasisFunction2D):
         var_x = VariableNode("x")
         var_y = VariableNode("y")
 
-        col = 0
-        for i in range(self.nx):
-            for j in range(self.ny):
-                coeff_val = float(c[col])
-                if abs(coeff_val) >= prune_threshold or symbolic_params:
-                    p_node: ASTNode = (
-                        ParameterNode(f"c{param_offset + col}", param_offset + col)
-                        if symbolic_params
-                        else ConstantNode(coeff_val)
+        def intervals(knots: np.ndarray) -> List[Tuple[float, float]]:
+            out: List[Tuple[float, float]] = []
+            for i in range(len(knots) - 1):
+                if knots[i + 1] > knots[i] + 1e-12:
+                    out.append((float(knots[i]), float(knots[i + 1])))
+            return out
+
+        def local_poly(knots: np.ndarray, a: float, b: float) -> np.ndarray:
+            """Monomial coefficients (degree+1, n_basis) of every basis on [a, b]."""
+            p = self.degree
+            nodes = 0.5 * (b - a) * (1.0 + np.cos(np.pi * (2 * np.arange(p + 1) + 1) / (2 * (p + 1)))) + a
+            local_nodes = (nodes - a) / (b - a)
+            vander = np.vander(local_nodes, p + 1, increasing=True)
+            samples = _cox_de_boor_1d(nodes, knots, p)  # (p+1, n_basis)
+            return np.linalg.solve(vander, samples)
+
+        def indicator(variable: VariableNode, a: float, b: float) -> ASTNode:
+            eps = max((b - a) * 1e-9, 1e-12)
+            lo = FunctionCallNode("clamp", (BinaryOpNode("+", BinaryOpNode("/", BinaryOpNode("-", variable, ConstantNode(a)), ConstantNode(eps)), ConstantNode(0.5)), ConstantNode(0.0), ConstantNode(1.0)))
+            hi = FunctionCallNode("clamp", (BinaryOpNode("+", BinaryOpNode("/", BinaryOpNode("-", ConstantNode(b), variable), ConstantNode(eps)), ConstantNode(0.5)), ConstantNode(0.0), ConstantNode(1.0)))
+            return BinaryOpNode("*", lo, hi)
+
+        cx_all = {iv: local_poly(self.knots_x, *iv) for iv in intervals(self.knots_x)}
+        cy_all = {iv: local_poly(self.knots_y, *iv) for iv in intervals(self.knots_y)}
+
+        for ix, cy in cx_all.items():
+            for iy, cy_coeffs in cy_all.items():
+                a, b = ix
+                d, e = iy
+                coef = np.zeros((self.degree + 1, self.degree + 1), dtype=np.float64)
+                symbolic_coefs: List[Tuple[Tuple[int, int], ASTNode]] = []
+                col = 0
+                for i in range(self.nx):
+                    for j in range(self.ny):
+                        w = float(c[col])
+                        if symbolic_params:
+                            symbolic_coefs.append(
+                                ((i, j), ParameterNode(f"c{param_offset + col}", param_offset + col))
+                            )
+                        elif abs(w) >= prune_threshold:
+                            coef += w * np.outer(cy[:, i], cy_coeffs[:, j])
+                        col += 1
+                pieces: List[ASTNode] = []
+                u = BinaryOpNode("/", BinaryOpNode("-", var_x, ConstantNode(a)), ConstantNode(b - a))
+                v = BinaryOpNode("/", BinaryOpNode("-", var_y, ConstantNode(d)), ConstantNode(e - d))
+
+                def poly_ast(coeffs: np.ndarray, variable: ASTNode) -> ASTNode:
+                    terms = [
+                        BinaryOpNode("*", ConstantNode(float(val)), BinaryOpNode("^", variable, ConstantNode(float(k))))
+                        for k, val in enumerate(coeffs)
+                        if abs(val) > prune_threshold or symbolic_params
+                    ]
+                    return _build_balanced_addition(terms)
+
+                if symbolic_params:
+                    for (i, j), p_node in symbolic_coefs:
+                        pieces.append(
+                            BinaryOpNode(
+                                "*",
+                                p_node,
+                                BinaryOpNode("*", poly_ast(cx_all[ix][:, i], u), poly_ast(cy_all[iy][:, j], v)),
+                            )
+                        )
+                else:
+                    for m in range(self.degree + 1):
+                        u_m: ASTNode = ConstantNode(1.0) if m == 0 else BinaryOpNode("^", u, ConstantNode(float(m)))
+                        for n in range(self.degree + 1):
+                            val = float(coef[m, n])
+                            if abs(val) < prune_threshold:
+                                continue
+                            v_n: ASTNode = ConstantNode(1.0) if n == 0 else BinaryOpNode("^", v, ConstantNode(float(n)))
+                            pieces.append(BinaryOpNode("*", ConstantNode(val), BinaryOpNode("*", u_m, v_n)))
+                if pieces:
+                    term_nodes.append(
+                        BinaryOpNode("*", _build_balanced_addition(pieces), BinaryOpNode("*", indicator(var_x, a, b), indicator(var_y, d, e)))
                     )
-                    # Use center of support as representative Gaussian-like localized basis
-                    x_c = 0.5 * (self.knots_x[i] + self.knots_x[min(i + self.degree + 1, len(self.knots_x) - 1)])
-                    y_c = 0.5 * (self.knots_y[j] + self.knots_y[min(j + self.degree + 1, len(self.knots_y) - 1)])
-                    dx = BinaryOpNode("-", var_x, ConstantNode(x_c))
-                    dy = BinaryOpNode("-", var_y, ConstantNode(y_c))
-                    term_ast = BinaryOpNode(
-                        "*",
-                        p_node,
-                        FunctionCallNode(
-                            "exp",
-                            (
-                                BinaryOpNode(
-                                    "*",
-                                    ConstantNode(-2.0),
-                                    BinaryOpNode(
-                                        "+",
-                                        BinaryOpNode("^", dx, ConstantNode(2.0)),
-                                        BinaryOpNode("^", dy, ConstantNode(2.0)),
-                                    ),
-                                ),
-                            ),
-                        ),
-                    )
-                    term_nodes.append(term_ast)
-                col += 1
 
         if not term_nodes:
             return ConstantNode(0.0)

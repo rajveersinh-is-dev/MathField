@@ -55,38 +55,30 @@ class EquationWorkspace:
         Render LaTeX formula card via matplotlib.mathtext without pdflatex.
         Handles long formulas gracefully by wrapping or clipping.
         """
-        import matplotlib
+        from matplotlib.font_manager import FontProperties
+        from matplotlib.mathtext import math_to_image
+        from PIL import Image, ImageDraw
 
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-
-        # Truncate or wrap formula if excessively long
         display_str = latex_str
         if len(display_str) > 120:
             display_str = display_str[:115] + " \\dots"
-
         if not display_str.startswith("$"):
             display_str = f"${display_str}$"
 
-        fig = plt.figure(figsize=(6, 1.2), dpi=100)
+        buf = io.BytesIO()
         try:
-            fig.text(0.05, 0.5, display_str, fontsize=12, verticalalignment="center")
-            buf = io.BytesIO()
-            fig.savefig(buf, format="png", bbox_inches="tight")
-            buf.seek(0)
-            rendered_bytes = buf.getvalue()
-            return rendered_bytes
-        except Exception:
-            # Fallback for complex LaTeX that mathtext cannot parse
-            fig.clear()
-            clean_text = latex_str[:100] + "..." if len(latex_str) > 100 else latex_str
-            fig.text(0.05, 0.5, clean_text, fontsize=10, verticalalignment="center")
-            buf = io.BytesIO()
-            fig.savefig(buf, format="png", bbox_inches="tight")
-            buf.seek(0)
+            # Direct mathtext rendering never changes the global matplotlib
+            # backend, which matters when the workspace is embedded in a GUI.
+            math_to_image(display_str, buf, prop=FontProperties(size=12), dpi=100, format="png", color="black")
             return buf.getvalue()
-        finally:
-            plt.close(fig)
+        except Exception:
+            # Guaranteed fallback: draw sanitized plain text with Pillow.
+            clean = latex_str.replace("$", "")[:100]
+            image = Image.new("RGB", (max(160, 8 * len(clean) + 20), 28), "white")
+            ImageDraw.Draw(image).text((10, 8), clean, fill="black")
+            fallback = io.BytesIO()
+            image.save(fallback, format="PNG")
+            return fallback.getvalue()
 
     def inspect_ast_node(self, node_id: str) -> Dict[str, Any]:
         """Inspect AST node properties, type, parameters, and child references."""

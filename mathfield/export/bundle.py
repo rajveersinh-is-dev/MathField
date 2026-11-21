@@ -46,43 +46,73 @@ def export_bundle(
         reproduce_path = temp_dir / "reproduce.py"
         export_standalone_script(result, reproduce_path)
 
-        # 2. verify.py (standalone verification script, zero mathfield dependencies)
+        # 2. verify.py - verifies the *exported model*, not a canned formula.
         verify_path = temp_dir / "verify.py"
-        verify_code = '''#!/usr/bin/env python3
+        domain_data = result.get("coordinate_domain", {})
+        width = int(domain_data.get("pixel_width") or 64)
+        height = int(domain_data.get("pixel_height") or 64)
+        # The standalone script reproduces the *global analytical component*.
+        # The full fidelity reconstruction additionally uses adaptive local
+        # patches stored in the .mathfield project, so no false parity between
+        # the two is asserted here.
+        metrics = {k: float(v) for k, v in (result.get("metrics") or {}).items() if isinstance(v, (int, float))}
+        if "mse" not in metrics and "psnr" not in metrics:
+            # Empty/minimal models have no measured fidelity metrics. Mark them
+            # explicitly rather than inventing numbers.
+            metrics = {"mse": 0.0, "psnr": 100.0, "metrics_available": False}
+        verify_payload = {
+            "width": width,
+            "height": height,
+            "metrics": metrics,
+        }
+        verify_code = f'''#!/usr/bin/env python3
 """
 MathField Independent Verification Script.
-Executes without MathField or external framework dependencies.
+Verifies the exported reproduction model without importing MathField.
+Requires only numpy, Pillow and the bundled reproduce.py.
 """
 
 import sys
 import numpy as np
+from reproduce import reconstruct
+
+CONTEXT = {verify_payload!r}
 
 
 def run_verification() -> bool:
-    print("Running MathField analytical consistency verification...")
-    # Verify mathematical bounds and numerical stability
-    X = np.linspace(-1.0, 1.0, 32)
-    Y = np.linspace(-1.0, 1.0, 32)
-    XX, YY = np.meshgrid(X, Y)
-    test_val = np.sin(np.pi * XX) * np.cos(np.pi * YY)
-    assert np.all(np.isfinite(test_val)), "Numerical divergence detected"
-    print("All mathematical constraints and parity tests passed.")
+    print("Verifying exported mathematical model...")
+    w, h = CONTEXT["width"], CONTEXT["height"]
+    first = np.asarray(reconstruct(w, h), dtype=np.float64)
+    second = np.asarray(reconstruct(w, h), dtype=np.float64)
+    assert first.shape[:2] == (h, w), f"Unexpected reconstruction shape {{first.shape}}"
+    assert np.all(np.isfinite(first)), "Numerical divergence in reproduction"
+    assert np.array_equal(first, second), "Reproduction is not deterministic"
+    if first.ndim == 3:
+        assert first.shape[2] in (3, 4), f"Unexpected channel count {{first.shape[2]}}"
+    for name in ("psnr", "mse", "ssim"):
+        if name in CONTEXT["metrics"]:
+            assert np.isfinite(CONTEXT["metrics"][name]), f"Invalid metric: {{name}}"
+    print("Note: reproduce.py evaluates the global analytical component; adaptive local patches are stored in project.mathfield.")
+    print("Exported model determinism and metadata verified.")
+    print("Verification PASSED")
     return True
 
 
 if __name__ == "__main__":
-    success = run_verification()
-    if success:
-        print("Verification PASSED")
-        sys.exit(0)
-    else:
-        print("Verification FAILED")
-        sys.exit(1)
+    sys.exit(0 if run_verification() else 1)
 '''
         verify_path.write_text(verify_code, encoding="utf-8")
 
         # 3. project.mathfield
         project_path = temp_dir / "project.mathfield"
+        raw_params = result.get("parameters") or {}
+        if isinstance(raw_params, dict):
+            param_values = [
+                float(v.get("value", 0.0)) if isinstance(v, dict) else float(v)
+                for v in raw_params.values()
+            ]
+        else:
+            param_values = [float(v) for v in raw_params]
         # Ensure project dictionary conforms to schema
         proj_dict = {
             "schema_version": "1.0.0",
@@ -107,15 +137,15 @@ if __name__ == "__main__":
                     "channels": [
                         {
                             "channel": "RGB",
-                            "formula": result.get("expressions", {}).get("formula", "sin(x) + cos(y)"),
-                            "parameters": [1.0, 0.5],
+                            "formula": result.get("expressions", {}).get("formula", "0"),
+                            "parameters": param_values,
                         }
                     ]
                 },
             ),
-            "local_patches": [],
-            "final_metrics": result.get("metrics", {"mse": 0.001, "psnr": 30.0, "ssim": 0.95, "complexity": 12.0}),
-            "random_seed": 42,
+            "local_patches": result.get("local_patches", []),
+            "final_metrics": metrics,
+            "random_seed": int(result.get("random_seed", 42)),
         }
         save_project(proj_dict, project_path)
 
@@ -123,7 +153,10 @@ if __name__ == "__main__":
         csv_path = temp_dir / "parameters.csv"
         export_csv_parameters(result, csv_path)
 
-        # 5. report.pdf
+        # 5. report.pdf (invariant mode avoids embedded timestamps/IDs)
+        from reportlab import rl_config
+
+        rl_config.invariant = 1
         pdf_path = temp_dir / "report.pdf"
         export_pdf_report(result, pdf_path)
 
@@ -157,9 +190,12 @@ generated by **MathField** (A Research-Grade Mathematical Image Reconstruction E
         if as_zip or dest_p.suffix.lower() == ".zip":
             dest_p.parent.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(dest_p, "w", zipfile.ZIP_DEFLATED) as z:
-                for file_p in temp_dir.iterdir():
+                for file_p in sorted(temp_dir.iterdir()):
                     if file_p.is_file():
-                        z.write(file_p, arcname=file_p.name)
+                        info = zipfile.ZipInfo(file_p.name, date_time=(1980, 1, 1, 0, 0, 0))
+                        info.compress_type = zipfile.ZIP_DEFLATED
+                        info.external_attr = 0o644 << 16
+                        z.writestr(info, file_p.read_bytes())
         else:
             dest_p.mkdir(parents=True, exist_ok=True)
             for file_p in temp_dir.iterdir():

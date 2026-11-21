@@ -213,7 +213,6 @@ class TestScenario02LandscapeMultiScaleReconstruction:
         status = pipe.execute(ctx)
 
         assert status == StageStatus.COMPLETED
-        assert ctx.local_decomposition is not None
         assert "patches" in ctx.local_decomposition
 
         # Verify reconstruction metrics
@@ -222,13 +221,10 @@ class TestScenario02LandscapeMultiScaleReconstruction:
         assert ctx.metrics["ssim"] > 0.30
 
         # --- Stage 4: Tiling & Memory Management (F15) ---
-        try:
-            from mathfield.core.engine.tiler import TiledReconstructionManager
+        from mathfield.core.engine.tiler import TiledReconstructionManager
 
-            tiler = TiledReconstructionManager(tile_size=32)
-            assert tiler is not None
-        except (ImportError, ModuleNotFoundError):
-            pass
+        tiler = TiledReconstructionManager(tile_size=32)
+        assert tiler.tile_size == 32
 
         # --- Stage 5: JPG Export (F23) ---
         try:
@@ -273,7 +269,7 @@ class TestScenario03TypographyVectorLogoRecovery:
 
         # Analytical model of typography integral stroke: y = sin(pi * x)
         ast_integral = parse("0.5 * (sin(pi * x) + 1.0)")
-        assert ast_integral is not None
+        assert "sin" in str(ast_integral)
 
         # Generate standalone Python reproduction script
         repro_script = e2e_temp_dir / "reproduce_typography.py"
@@ -521,11 +517,8 @@ class TestScenario06PublicationGradePDFReportCompilation:
         assert latex_str.count("{") == latex_str.count("}")
 
         # PDF Report Compilation (F26)
-        try:
-            from mathfield.export.latex_report import export_latex_report
-            from mathfield.export.pdf_report import export_pdf_report
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export latex/pdf reports are under active development in Milestone M5")
+        from mathfield.export.latex_report import export_latex_report
+        from mathfield.export.pdf_report import export_pdf_report
 
         pdf_path = e2e_temp_dir / "publication_report.pdf"
         tex_path = e2e_temp_dir / "publication_report.tex"
@@ -583,10 +576,7 @@ class TestScenario07JobCheckpointingBitExactRecovery:
 
     def test_scenario_07_job_checkpointing_bit_exact_recovery(self, synth_rbf: Path, e2e_temp_dir: Path) -> None:
         # Checkpoint module import guard (M3)
-        try:
-            from mathfield.core.checkpoint import CheckpointManager
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.checkpoint is under active development in Milestone M3")
+        from mathfield.core.checkpoint import CheckpointManager
 
         chk_path = e2e_temp_dir / "interrupted.mfchk"
         chk_mgr = CheckpointManager()

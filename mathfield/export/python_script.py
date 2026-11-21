@@ -11,6 +11,7 @@ from typing import Any, List, Union
 
 from mathfield.core.ast.parser import parse
 from mathfield.core.codegen.numpy_gen import to_python_code
+from mathfield.export.raster import natural_key
 
 
 def export_standalone_script(
@@ -48,7 +49,7 @@ def export_standalone_script(
     if isinstance(model, dict) and "parameters" in model:
         raw_p = model["parameters"]
         if isinstance(raw_p, dict):
-            for k in sorted(raw_p.keys()):
+            for k in sorted(raw_p.keys(), key=natural_key):
                 val = raw_p[k]
                 v = float(val.get("value", 0.0)) if isinstance(val, dict) else float(val)
                 params_list.append(v)

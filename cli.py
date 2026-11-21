@@ -13,11 +13,12 @@ import argparse
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 from PIL import Image
 
+from mathfield.core.ast.nodes import ASTNode, BinaryOpNode, ConstantNode, FunctionCallNode, UnaryOpNode
 from mathfield.core.domain import CoordinateDomain2D, DomainMode
 from mathfield.core.pipeline.controller import ReconstructionController
 from mathfield.export.csv_export import export_csv_parameters
@@ -126,6 +127,80 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _ast_constants(node: ASTNode) -> List[float]:
+    """Collect fitted numeric constants from a discovered symbolic AST."""
+    if isinstance(node, ConstantNode):
+        return [float(node.value)]
+    if isinstance(node, BinaryOpNode):
+        return _ast_constants(node.left) + _ast_constants(node.right)
+    if isinstance(node, UnaryOpNode):
+        return _ast_constants(node.operand)
+    if isinstance(node, FunctionCallNode):
+        return [v for arg in node.args for v in _ast_constants(arg)]
+    return []
+
+
+def _format_mode_b_channel(
+    global_model: Dict[str, Any],
+    channel: int,
+    max_terms: int | None = None,
+    human: bool = False,
+) -> str:
+    """Render a real analytical equation from the fitted global coefficients.
+
+    With human=False the output uses only MathField-parseable syntax so the
+    standalone reproduction script can compile it. With human=True it uses
+    conventional mathematical notation for reports and posters.
+    """
+    if max_terms is None:
+        # Machine expressions must retain every non-negligible coefficient:
+        # truncating a large cancellation-heavy expansion corrupts the model.
+        max_terms = 8 if human else 100000
+    cheb = global_model.get("chebyshev_basis")
+    fourier = global_model.get("fourier_basis")
+    raw_coeffs = global_model.get("coefficients")
+    if cheb is None or fourier is None or raw_coeffs is None:
+        return global_model.get("formula", "0")
+    coeffs = np.asarray(raw_coeffs)
+    c_vec = coeffs[:, channel] if coeffs.ndim == 2 else coeffs
+
+    terms: List[Tuple[float, str]] = []
+    for k, (i, j) in enumerate(cheb.indices):
+        value = float(c_vec[k])
+        if abs(value) <= 1e-4:
+            continue
+        if human:
+            name = "1" if i == 0 and j == 0 else f"T_{i}(x)" if j == 0 else f"T_{j}(y)" if i == 0 else f"T_{i}(x)T_{j}(y)"
+        else:
+            name = "1" if i == 0 and j == 0 else f"x^{i}" if j == 0 else f"y^{j}" if i == 0 else f"x^{i}*y^{j}"
+        terms.append((abs(value), f"{value:+.6g}*{name}" if not human else f"{value:+.4f}·{name}"))
+
+    base = cheb.num_terms
+    for m, (kx, ky) in enumerate(fourier.freq_pairs):
+        cos_v = float(c_vec[base + 2 * m])
+        sin_v = float(c_vec[base + 2 * m + 1])
+        if human:
+            arg = f"({int(kx)}πx" if kx else "("
+            if ky:
+                arg += f" + {int(ky)}πy)" if kx else f"{int(ky)}πy)"
+            else:
+                arg += ")"
+        else:
+            arg = f"({int(kx)}*pi*x" if kx else "("
+            if ky:
+                arg += f" + {int(ky)}*pi*y)" if kx else f"{int(ky)}*pi*y)"
+            else:
+                arg += ")"
+        for value, func in ((cos_v, "cos"), (sin_v, "sin")):
+            if abs(value) > 1e-4:
+                text = f"{value:+.6g}*{func}{arg}" if not human else f"{value:+.4f}·{func}{arg}"
+                terms.append((abs(value), text))
+
+    terms.sort(key=lambda item: item[0], reverse=True)
+    leading = " ".join(text for _, text in terms[:max_terms])
+    return f"{leading} + ... [{len(terms)} active terms]" if human else (leading or "0.0")
+
+
 def main(argv: List[str] | None = None) -> int:
     args = parse_args(argv)
 
@@ -146,21 +221,25 @@ def main(argv: List[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        pil_img = Image.open(img_path)
+        with Image.open(img_path) as pil_img:
+            has_alpha = pil_img.mode in ("RGBA", "LA")
+            color_space = "RGBA" if has_alpha else "RGB"
+            target_img = pil_img.convert("RGBA" if has_alpha else "RGB")
+            img_arr = np.array(target_img, dtype=np.float64) / 255.0
     except Exception as exc:
         print(f"Error opening image file '{img_path}': {exc}", file=sys.stderr)
         return 1
 
-    has_alpha = pil_img.mode in ("RGBA", "LA")
-    color_space = "RGBA" if has_alpha else "RGB"
-    target_img = pil_img.convert("RGBA" if has_alpha else "RGB")
-    img_arr = np.array(target_img, dtype=np.float64) / 255.0
     h, w = img_arr.shape[:2]
+    if h == 0 or w == 0:
+        print("Error: Input image has zero width or height.", file=sys.stderr)
+        return 1
 
     domain = CoordinateDomain2D(width=w, height=h, mode=DomainMode.ASPECT_PRESERVED)
 
     config = {
         "lambda_reg": args.lambda_reg,
+        "reg_lambda": args.lambda_reg,
         "max_iter": args.max_iter,
         "tolerance": args.tolerance,
         "seed": args.seed,
@@ -183,10 +262,7 @@ def main(argv: List[str] | None = None) -> int:
 
     metrics = dict(context.metrics) if context.metrics else {}
     if "complexity" not in metrics:
-        if context.global_model and "complexity" in context.global_model:
-            metrics["complexity"] = float(context.global_model["complexity"])
-        else:
-            metrics["complexity"] = 10.0
+        metrics["complexity"] = float(context.global_model.get("complexity", 0.0)) if context.global_model else 0.0
 
     # Ensure condition number is recorded if available
     if context.condition_report and "condition_number" in context.condition_report:
@@ -223,16 +299,18 @@ def main(argv: List[str] | None = None) -> int:
     # Collect parameters for CSV export
     parameters_dict: Dict[str, Any] = {}
     if is_mode_a:
-        sym_ast = global_model.get("symbolic_ast")
-        if sym_ast is not None and hasattr(sym_ast, "parameters"):
-            ast_params = sym_ast.parameters()
-            if ast_params:
-                for p_name in ast_params:
-                    parameters_dict[p_name] = {"stage": "global", "channel": "RGB", "value": 1.0}
-            else:
-                parameters_dict["c0"] = {"stage": "global", "channel": "RGB", "value": 1.0}
-        else:
-            parameters_dict["c0"] = {"stage": "global", "channel": "RGB", "value": 1.0}
+        channel_asts = global_model.get("channel_asts") or []
+        constants = [
+            value
+            for ast in channel_asts
+            for value in _ast_constants(ast)
+            if abs(value) > 1e-12
+        ]
+        if not constants:
+            best_ast = global_model.get("symbolic_ast")
+            constants = _ast_constants(best_ast) if best_ast is not None else []
+        for i, value in enumerate(constants):
+            parameters_dict[f"c{i}"] = {"stage": "global", "channel": "RGB", "value": float(value)}
     else:
         if "coefficients" in global_model and global_model["coefficients"] is not None:
             actual = np.asarray(global_model["coefficients"])
@@ -257,14 +335,15 @@ def main(argv: List[str] | None = None) -> int:
     local_decomp_data: Dict[str, Any] = {}
     local_patches_list: List[Any] = []
     if context.local_decomposition:
-        leaves_cnt = context.local_decomposition.get("leaves_count", 0)
-        local_decomp_data["leaves_count"] = leaves_cnt
-        local_decomp_data["patches"] = [{"patch_id": i, "bounds": [-0.5, -0.5, 0.5, 0.5]} for i in range(leaves_cnt)]
-        local_patches_list = local_decomp_data["patches"]
-    elif not is_mode_a:
-        # Mode B default local decomposition
-        local_decomp_data["leaves_count"] = 4
-        local_decomp_data["patches"] = [{"patch_id": i, "bounds": [-1.0, -1.0, 1.0, 1.0]} for i in range(4)]
+        actual_patches = context.local_decomposition.get("patches") or []
+        local_decomp_data["leaves_count"] = int(
+            context.local_decomposition.get("leaves_count", len(actual_patches))
+        )
+        local_decomp_data["patches"] = [
+            {"patch_id": i, "bounds": [float(v) for v in patch.bounds]}
+            for i, patch in enumerate(actual_patches)
+            if hasattr(patch, "bounds")
+        ]
         local_patches_list = local_decomp_data["patches"]
 
     proj_dict: Dict[str, Any] = {
@@ -298,18 +377,35 @@ def main(argv: List[str] | None = None) -> int:
     proj_path = out_dir / "mathfield_out.mathfield"
     save_project(proj_dict, proj_path)
 
+    if is_mode_a:
+        mode_expr = {
+            "R": str(global_model.get("symbolic_ast", global_model.get("formula", "0"))),
+            "G": str(global_model.get("symbolic_ast", global_model.get("formula", "0"))),
+            "B": str(global_model.get("symbolic_ast", global_model.get("formula", "0"))),
+            "formula": str(global_model.get("formula", "0")),
+        }
+    else:
+        mode_expr = {
+            "R": _format_mode_b_channel(global_model, 0),
+            "G": _format_mode_b_channel(global_model, 1),
+            "B": _format_mode_b_channel(global_model, 2),
+            "formula": f"chebyshev2d_deg_{global_model.get('degree', 6)} + fourier2d_harmonics + local_patches",
+        }
+
+    global_equations = {
+        channel: _format_mode_b_channel(global_model, index, human=True)
+        for index, channel in enumerate("RGB")
+    } if not is_mode_a else {
+        channel: mode_expr[channel] for channel in "RGB"
+    }
+
     export_result = {
         "coordinate_domain": proj_dict["coordinate_domain"],
         "color_space": color_space,
         "mode": proj_dict["mode"],
         "global_model": global_model,
-        "expressions": {
-            "R": global_model.get("formula", "sin(x)"),
-            "G": global_model.get("formula", "cos(y)"),
-            "B": "0.0",
-        }
-        if is_mode_a
-        else {"formula": "sin(x) + cos(y)"},
+        "global_equations": global_equations,
+        "expressions": mode_expr,
         "parameters": parameters_dict,
         "metrics": metrics,
         "rendered_image": context.rendered_image,

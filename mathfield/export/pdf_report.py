@@ -28,6 +28,8 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from mathfield.export.raster import to_uint8_array
+
 
 def export_pdf_report(
     result: Dict[str, Any],
@@ -257,7 +259,7 @@ def export_pdf_report(
     story.append(Paragraph("3. Smooth C² Partition of Unity Blending Windows", heading_style))
     story.append(
         Paragraph(
-            "To guarantee infinite differentiability across patch seams without step discontinuities or boundary voids, "
+            "To guarantee C² continuity across patch seams without step discontinuities or boundary voids, "
             "each localized patch k is modulated by a separable bivariate C² Wendland weighting window:",
             body_style,
         )
@@ -445,9 +447,7 @@ def export_pdf_report(
         for name, img_data in valid_triplet:
             buf = io.BytesIO()
             if isinstance(img_data, np.ndarray):
-                arr = img_data
-                if arr.max() <= 1.0 and arr.dtype in (np.float32, np.float64):
-                    arr = np.clip(arr * 255.0, 0, 255).astype(np.uint8)
+                arr = to_uint8_array(img_data)
                 if arr.ndim == 2:
                     pil_img = Image.fromarray(arr, mode="L")
                 else:
@@ -545,11 +545,14 @@ def export_pdf_report(
         )
     )
     story.append(Spacer(1, 4))
+    domain = result.get("coordinate_domain", {})
+    out_w = int(domain.get("pixel_width") or 64)
+    out_h = int(domain.get("pixel_height") or 64)
     repro_code = (
         "# Zero-dependency mathematical evaluation command:\n"
-        "python reproduce.py --width 236 --height 354 --out reconstruction.png\n"
+        f"python reproduce.py --output reconstruction.png --resolution {out_w} {out_h}\n"
         "# Continuous 2x super-resolution direct evaluation:\n"
-        "python reproduce.py --width 472 --height 708 --out superres.png"
+        f"python reproduce.py --output superres.png --resolution {out_w * 2} {out_h * 2}"
     )
     story.append(Paragraph(repro_code, eq_style))
 

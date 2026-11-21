@@ -57,6 +57,13 @@ class ModeBPipeline:
         h, w = img_arr.shape[:2]
         c = img_arr.shape[2] if img_arr.ndim == 3 else 1
 
+        # Accepted aliases keep CLI flags and ablation studies meaningful.
+        cfg = self.config
+        reg_lambda = float(cfg.get("reg_lambda", cfg.get("lambda_reg", 1e-5)))
+        use_conditioning = bool(cfg.get("enable_varpro", True))
+        decouple_color = bool(cfg.get("decouple_color", True))
+        enable_quadtree = bool(cfg.get("enable_quadtree", True))
+
         X, Y = context.domain.to_discrete_grid(width=w, height=h)
 
         # --- Stage 2: Dense Global Expansion ---
@@ -81,25 +88,36 @@ class ModeBPipeline:
 
         # Monitor conditioning of global basis
         monitor = ConditionMonitor(
-            max_condition_number=float(self.config.get("max_condition_number", 1e10)),
-            tikhonov_alpha=float(self.config.get("tikhonov_alpha", 1e-4)),
+            max_condition_number=float(cfg.get("max_condition_number", 1e10)),
+            tikhonov_alpha=float(cfg.get("tikhonov_alpha", reg_lambda)),
         )
         cond_rep = monitor.analyze_matrix(Phi_global)
         context.condition_report = cond_rep
 
-        if cond_rep["is_ill_conditioned"]:
-            Phi_solve = monitor.regularize(Phi_global)
-        else:
-            Phi_solve = Phi_global
+        regularize = use_conditioning and bool(cond_rep["is_ill_conditioned"])
+        Phi_solve = monitor.regularize(Phi_global) if regularize else Phi_global
+
+        def solve_channel(b_ch: np.ndarray) -> np.ndarray:
+            rhs = np.concatenate([b_ch, np.zeros(n_terms)]) if regularize else b_ch
+            return np.linalg.lstsq(Phi_solve, rhs, rcond=1e-10)[0]
 
         global_channels = []
         global_coeffs = []
+        shared_coeffs: Optional[np.ndarray] = None
+        if not decouple_color and img_arr.ndim == 3:
+            luminance = (
+                0.299 * img_arr[:, :, 0] + 0.587 * img_arr[:, :, 1] + 0.114 * img_arr[:, :, 2]
+                if c >= 3
+                else img_arr[:, :, 0]
+            )
+            shared_coeffs = solve_channel(luminance.ravel())
+
         for ch in range(c):
-            y_ch = img_arr[:, :, ch] if img_arr.ndim == 3 else img_arr
-            b_ch = y_ch.ravel()
-            if cond_rep["is_ill_conditioned"]:
-                b_ch = np.concatenate([b_ch, np.zeros(n_terms)])
-            c_ch, _ = np.linalg.lstsq(Phi_solve, b_ch, rcond=1e-10)[:2]
+            if shared_coeffs is not None:
+                c_ch = shared_coeffs
+            else:
+                y_ch = img_arr[:, :, ch] if img_arr.ndim == 3 else img_arr
+                c_ch = solve_channel(y_ch.ravel())
             fit_ch = Phi_global @ c_ch
             global_channels.append(fit_ch.reshape(h, w))
             global_coeffs.append(c_ch)
@@ -127,8 +145,8 @@ class ModeBPipeline:
         res_mag = np.sqrt(np.mean(residual**2, axis=-1)) if residual.ndim == 3 else residual
         root_mse = float(np.mean(res_mag**2))
         default_thresh = max(1e-4, min(0.05, 0.25 * root_mse))
-        split_thresh = float(self.config.get("split_threshold", default_thresh))
-        max_depth = int(self.config.get("max_depth", 3))
+        split_thresh = float(cfg.get("split_threshold", default_thresh))
+        max_depth = int(cfg.get("max_depth", 3)) if enable_quadtree else 0
 
         quadtree = QuadtreeDecomposition(
             max_depth=max_depth,
@@ -146,16 +164,15 @@ class ModeBPipeline:
         if context.is_cancelled():
             return StageStatus.CANCELLED
 
-        overlap_ratio = float(self.config.get("overlap_ratio", 0.20))
+        overlap_ratio = float(cfg.get("overlap_ratio", 0.20))
         pou = WendlandPartitionOfUnity(overlap_ratio=overlap_ratio, separable=True)
         weights = pou.compute_weights(leaves, X, Y)  # (K, H, W)
 
         local_correction = np.zeros_like(img_arr)
         patches: List[LocalPatch] = []
 
-        local_basis_type = str(self.config.get("local_basis_type", "dct2")).lower()
-        local_freq = int(self.config.get("local_freq", 8))
-        reg_lambda = float(self.config.get("reg_lambda", 1e-5))
+        local_basis_type = str(cfg.get("local_basis_type", "dct2")).lower()
+        local_freq = int(cfg.get("local_freq", 8))
 
         for k, leaf in enumerate(leaves):
             leaf_weight = weights[k]

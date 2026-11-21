@@ -39,6 +39,21 @@ def is_neg_one(node: ASTNode) -> bool:
     return is_constant(node, -1.0)
 
 
+def _is_integer_value(value: float) -> bool:
+    return math.isfinite(value) and math.isclose(value, round(value), rel_tol=0.0, abs_tol=1e-12)
+
+
+def _is_nonnegative_node(node: ASTNode) -> bool:
+    """Conservative check for expressions known to be non-negative for all real inputs."""
+    if isinstance(node, ConstantNode):
+        return node.value >= 0.0
+    if isinstance(node, FunctionCallNode):
+        return node.func in ("abs", "square", "exp", "sqrt", "softplus", "sigmoid")
+    if isinstance(node, BinaryOpNode) and node.op in ("^", "**"):
+        return isinstance(node.right, ConstantNode) and _is_integer_value(node.right.value) and round(node.right.value) % 2 == 0
+    return False
+
+
 def simplify(node: ASTNode, max_iterations: int = 50) -> ASTNode:
     """
     Applies fixed-point bottom-up algebraic simplification rules to the AST.
@@ -202,12 +217,20 @@ def _simplify_step(node: ASTNode) -> ASTNode:
                 return ConstantNode(1.0)
             if is_zero(left) and isinstance(right, ConstantNode) and right.value > 0:
                 return ConstantNode(0.0)
-            # (u ^ a) ^ b -> u ^ (a * b) for constants a, b
+            # (u ^ a) ^ b -> u ^ (a * b), but only when the reassociation is
+            # valid for real-valued, possibly negative u. With integer inner
+            # exponents the parity convention of protected_pow is preserved;
+            # otherwise only a provably non-negative base may be reassociated
+            # (e.g. (x^2)^0.5 is |x|, *not* x, for negative x).
             if (
                 isinstance(left, BinaryOpNode)
                 and left.op in ("^", "**")
                 and isinstance(left.right, ConstantNode)
                 and isinstance(right, ConstantNode)
+                and (
+                    (_is_integer_value(left.right.value) and _is_integer_value(right.value))
+                    or _is_nonnegative_node(left.left)
+                )
             ):
                 return _simplify_step(BinaryOpNode("^", left.left, ConstantNode(left.right.value * right.value)))
 
@@ -452,8 +475,18 @@ def _diff_rec(node: ASTNode, target: str) -> ASTNode:
             # d phi / dR = 20 * (r^2 / R^3) * (1 - r/R)^3
             r, rad = args[0], args[1]
             dr, drad = dargs[0], dargs[1]
+            # The kernel itself clamps r to non-negative values; the derivative
+            # must use the same clamped radius and vanish outside the support.
+            r = FunctionCallNode(
+                "clamp", (r, ConstantNode(0.0), ConstantNode(1e12))
+            )
             r_over_R = BinaryOpNode("/", r, rad)
-            t = BinaryOpNode("-", ConstantNode(1.0), r_over_R)
+            # (1 - r/R)^3 must be clamped at zero: outside the compact support
+            # the kernel and therefore its derivative are exactly zero.
+            t = FunctionCallNode(
+                "clamp",
+                (BinaryOpNode("-", ConstantNode(1.0), r_over_R), ConstantNode(0.0), ConstantNode(1.0)),
+            )
             t3 = BinaryOpNode("^", t, ConstantNode(3.0))
 
             term_dr = ConstantNode(0.0)

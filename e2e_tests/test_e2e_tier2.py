@@ -20,7 +20,8 @@ Methodology & Invariants:
   IEEE-754 subnormal and special float values (denormals, -0.0, inf).
 - Zero eval/exec, zero precomputed lookup tables. Dynamic fixtures from conftest.py
   and helpers from helpers.py.
-- Clean pytest.skip guards for unreleased downstream modules with genuine assertions.
+- No ImportError-driven skips: import regressions fail loudly. Skips are reserved
+  for explicit hardware capability checks (CUDA/native DLL).
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ import re
 import socket
 import subprocess
 import sys
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -72,8 +74,7 @@ class TestFeature01ModeABoundary:
     def test_f01_t2_01_mode_a_pure_black(self, e2e_temp_dir: Path) -> None:
         """TC-F01-T2-01: Pure black input (f(x,y)=0 everywhere) prunes to constant zero model."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development in Milestone M3")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         black_img = e2e_temp_dir / "pure_black.png"
         Image.fromarray(np.zeros((32, 32, 3), dtype=np.uint8), mode="RGB").save(str(black_img))
@@ -103,8 +104,7 @@ class TestFeature01ModeABoundary:
     def test_f01_t2_02_mode_a_pure_white(self, e2e_temp_dir: Path) -> None:
         """TC-F01-T2-02: Pure white input (f(x,y)=1 everywhere) reduces to constant 1.0 model."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development in Milestone M3")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         white_img = e2e_temp_dir / "pure_white.png"
         Image.fromarray(np.full((32, 32, 3), 255, dtype=np.uint8), mode="RGB").save(str(white_img))
@@ -129,13 +129,12 @@ class TestFeature01ModeABoundary:
         res.assert_success()
         proj_file = out_dir / "mathfield_out.mathfield"
         data = inspect_json_project(proj_file)
-        assert data is not None
+        assert data.get("schema_version") == "1.0.0"
 
     def test_f01_t2_03_mode_a_single_pixel(self, e2e_temp_dir: Path) -> None:
         """TC-F01-T2-03: Degenerate single pixel input (1x1) avoids divide-by-zero degrees of freedom."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development in Milestone M3")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         tiny_img = e2e_temp_dir / "single_pixel.png"
         Image.fromarray(np.array([[[128, 64, 32]]], dtype=np.uint8), mode="RGB").save(str(tiny_img))
@@ -160,8 +159,7 @@ class TestFeature01ModeABoundary:
     def test_f01_t2_04_mode_a_extreme_lambda(self, synth_rgb_poly: Path, e2e_temp_dir: Path) -> None:
         """TC-F01-T2-04: Extreme regularization penalty (lambda -> inf) forces minimal constant model."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development in Milestone M3")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_dir = e2e_temp_dir / "f01_t2_extreme_lambda"
         res = run_cli(
@@ -189,8 +187,7 @@ class TestFeature01ModeABoundary:
     def test_f01_t2_05_mode_a_zero_lambda(self, synth_rgb_poly: Path, e2e_temp_dir: Path) -> None:
         """TC-F01-T2-05: Zero regularization penalty (lambda = 0) reverts to unconstrained least squares."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development in Milestone M3")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_dir = e2e_temp_dir / "f01_t2_zero_lambda"
         res = run_cli(
@@ -223,8 +220,7 @@ class TestFeature02ModeBBoundary:
     def test_f02_t2_01_mode_b_checkerboard_boundary(self, synth_checker: Path, e2e_temp_dir: Path) -> None:
         """TC-F02-T2-01: Maximum basis expansion converges on high-contrast checkerboard without unbounded overshoot."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development in Milestone M3")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_dir = e2e_temp_dir / "f02_t2_checker"
         res = run_cli(
@@ -245,10 +241,7 @@ class TestFeature02ModeBBoundary:
 
     def test_f02_t2_02_mode_b_near_singular_basis(self) -> None:
         """TC-F02-T2-02: Near-singular ill-conditioned basis (kappa > 1e12) activates Tikhonov damping."""
-        try:
-            from mathfield.core.optimize.conditioning import ConditionMonitor
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.optimize.conditioning is under active development in Milestone M2")
+        from mathfield.core.optimize.conditioning import ConditionMonitor
 
         monitor = ConditionMonitor(max_condition_number=1e10, tikhonov_alpha=1e-4)
         # Create near-singular matrix with duplicate column perturbed by 1e-15
@@ -271,10 +264,7 @@ class TestFeature02ModeBBoundary:
 
     def test_f02_t2_03_mode_b_extreme_aspect_ratio(self, e2e_temp_dir: Path) -> None:
         """TC-F02-T2-03: Extreme aspect ratio (100x1 horizontal ribbon) is tiled and fitted properly."""
-        try:
-            from mathfield.core.domain import CoordinateDomain2D, DomainMode
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.domain is under active development in Milestone M2")
+        from mathfield.core.domain import CoordinateDomain2D, DomainMode
 
         domain = CoordinateDomain2D(width=100, height=1, mode=DomainMode.ASPECT_PRESERVED)
         assert domain.aspect_ratio == 100.0
@@ -285,10 +275,7 @@ class TestFeature02ModeBBoundary:
 
     def test_f02_t2_04_mode_b_quadtree_depth_exhaustion(self) -> None:
         """TC-F02-T2-04: Maximum quadtree depth exhaustion (depth=6) terminates safely without stack overflow."""
-        try:
-            from mathfield.core.local.quadtree import QuadtreeDecomposition
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.local.quadtree is under active development in Milestone M2")
+        from mathfield.core.local.quadtree import QuadtreeDecomposition
 
         decomp = QuadtreeDecomposition(max_depth=6, split_threshold=0.0)
         # Random noise residual ensuring every node exceeds split threshold
@@ -302,11 +289,8 @@ class TestFeature02ModeBBoundary:
 
     def test_f02_t2_05_mode_b_zero_residual_boundary(self) -> None:
         """TC-F02-T2-05: Fitting exact polynomial surface yields residual MSE < 1e-12."""
-        try:
-            from mathfield.core.basis.polynomial import Chebyshev2D
-            from mathfield.core.optimize.solvers import solve_linear_lstsq
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.basis or optimize is under active development in Milestone M2")
+        from mathfield.core.basis.polynomial import Chebyshev2D
+        from mathfield.core.optimize.solvers import solve_linear_lstsq
 
         x = np.linspace(-1.0, 1.0, 16)
         X, Y = np.meshgrid(x, x)
@@ -331,12 +315,9 @@ class TestFeature03ContinuousDomainBoundary:
     """Feature 3: Continuous 2D Coordinate Domain - Boundary & Corner Cases"""
 
     def _get_domain_module(self):
-        try:
-            from mathfield.core.domain import CoordinateDomain2D, DomainMode
+        from mathfield.core.domain import CoordinateDomain2D, DomainMode
 
-            return CoordinateDomain2D, DomainMode
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.domain is under active development in Milestone M2")
+        return CoordinateDomain2D, DomainMode
 
     def test_f03_t2_01_domain_extreme_aspect_ratio(self) -> None:
         """TC-F03-T2-01: Extreme aspect ratio (1x8192 vertical line) preserves non-zero axis width."""
@@ -406,12 +387,9 @@ class TestFeature04ImageAnalysisBoundary:
     """Feature 4: Stage 1 (Image Analysis) - Boundary & Corner Cases"""
 
     def _get_analyzer_module(self):
-        try:
-            from mathfield.core.image_analysis import ImageAnalysisResult, ImageAnalyzer
+        from mathfield.core.image_analysis import ImageAnalysisResult, ImageAnalyzer
 
-            return ImageAnalyzer, ImageAnalysisResult
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.image_analysis is under active development in Milestone M2")
+        return ImageAnalyzer, ImageAnalysisResult
 
     def test_f04_t2_01_analysis_flat_zero_variance(self) -> None:
         """TC-F04-T2-01: Flat image with zero variance has TV=0, entropy=0, and no NaN correlations."""
@@ -476,15 +454,12 @@ class TestFeature05GlobalDiscoveryBoundary:
     """Feature 5: Stage 2 (Global Discovery) - Boundary & Corner Cases"""
 
     def _get_basis_modules(self):
-        try:
-            from mathfield.core.basis.fourier import Fourier2D
-            from mathfield.core.basis.polynomial import Chebyshev2D
-            from mathfield.core.basis.rational import Rational2D
-            from mathfield.core.basis.rbf import WendlandC2RBF
+        from mathfield.core.basis.fourier import Fourier2D
+        from mathfield.core.basis.polynomial import Chebyshev2D
+        from mathfield.core.basis.rational import Rational2D
+        from mathfield.core.basis.rbf import WendlandC2RBF
 
-            return Chebyshev2D, Fourier2D, WendlandC2RBF, Rational2D
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.basis is under active development in Milestone M2")
+        return Chebyshev2D, Fourier2D, WendlandC2RBF, Rational2D
 
     def test_f05_t2_01_discovery_high_degree_chebyshev(self) -> None:
         """TC-F05-T2-01: High-degree Chebyshev polynomial (N=30) Clenshaw recurrence remains bounded."""
@@ -532,11 +507,8 @@ class TestFeature05GlobalDiscoveryBoundary:
 
     def test_f05_t2_05_discovery_collinear_rbf_centers(self) -> None:
         """TC-F05-T2-05: Collinear RBF center placement handled cleanly via SVD pseudoinverse."""
-        try:
-            from mathfield.core.basis.rbf import GaussianRBF
-            from mathfield.core.optimize.solvers import solve_linear_lstsq
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("GaussianRBF or solve_linear_lstsq under active development")
+        from mathfield.core.basis.rbf import GaussianRBF
+        from mathfield.core.optimize.solvers import solve_linear_lstsq
 
         collinear_centers = np.array([[0.0, 0.0], [0.2, 0.2], [0.4, 0.4], [0.6, 0.6], [0.8, 0.8]], dtype=np.float64)
         rbf = GaussianRBF(centers=collinear_centers, epsilons=2.0)
@@ -556,17 +528,14 @@ class TestFeature06LocalDecompositionBoundary:
     """Feature 6: Stage 3 (Local Decomposition) - Boundary & Corner Cases"""
 
     def _get_local_modules(self):
-        try:
-            from mathfield.core.local.local_patch import LocalPatch
-            from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
-            from mathfield.core.local.quadtree import (
-                QuadtreeDecomposition,
-                QuadtreeNode,
-            )
+        from mathfield.core.local.local_patch import LocalPatch
+        from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
+        from mathfield.core.local.quadtree import (
+            QuadtreeDecomposition,
+            QuadtreeNode,
+        )
 
-            return QuadtreeDecomposition, QuadtreeNode, WendlandPartitionOfUnity, LocalPatch
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.local is under active development in Milestone M2")
+        return QuadtreeDecomposition, QuadtreeNode, WendlandPartitionOfUnity, LocalPatch
 
     def test_f06_t2_01_local_homogeneous_residual(self) -> None:
         """TC-F06-T2-01: Homogeneous residual (r(x,y)=0 everywhere) yields exactly 0 splits (root only)."""
@@ -609,10 +578,7 @@ class TestFeature06LocalDecompositionBoundary:
 
     def test_f06_t2_04_local_patch_boundary_perimeter(self) -> None:
         """TC-F06-T2-04: Local patch located at domain perimeter evaluates without index errors."""
-        try:
-            from mathfield.core.basis.polynomial import Chebyshev2D
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("Chebyshev2D under active development")
+        from mathfield.core.basis.polynomial import Chebyshev2D
         _, _, _, LocalPatch = self._get_local_modules()
         patch = LocalPatch(bounds=(0.5, 0.5, 1.0, 1.0), basis=Chebyshev2D(deg_x=2, deg_y=2))
         X, Y = np.meshgrid(np.linspace(0.5, 1.0, 16), np.linspace(0.5, 1.0, 16))
@@ -639,17 +605,14 @@ class TestFeature07JointOptimizationBoundary:
     """Feature 7: Stage 4 (Joint Optimization) - Boundary & Corner Cases"""
 
     def _get_optimize_modules(self):
-        try:
-            from mathfield.core.optimize.evolutionary import EvolutionaryOptimizer
-            from mathfield.core.optimize.solvers import (
-                LBFGSBOptimizer,
-                LevenbergMarquardtOptimizer,
-                solve_linear_lstsq,
-            )
+        from mathfield.core.optimize.evolutionary import EvolutionaryOptimizer
+        from mathfield.core.optimize.solvers import (
+            LBFGSBOptimizer,
+            LevenbergMarquardtOptimizer,
+            solve_linear_lstsq,
+        )
 
-            return solve_linear_lstsq, LevenbergMarquardtOptimizer, LBFGSBOptimizer, EvolutionaryOptimizer
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.optimize is under active development in Milestone M2")
+        return solve_linear_lstsq, LevenbergMarquardtOptimizer, LBFGSBOptimizer, EvolutionaryOptimizer
 
     def test_f07_t2_01_opt_varpro_rank_deficient(self) -> None:
         """TC-F07-T2-01: VarPro on rank-deficient basis computes minimum-norm solution without LinAlgError."""
@@ -681,7 +644,7 @@ class TestFeature07JointOptimizationBoundary:
         opt = LBFGSBOptimizer(bounds=bounds)
         # Minimize (x - 5)^2 where true minimum is at x=5, but bound is [0, 2]
         res = opt.minimize(fun=lambda x: float((x[0] - 5.0) ** 2), x0=np.array([0.0]))
-        assert res.success or res.status == 0 or hasattr(res, "x")
+        assert res.x.size == 1
         # Solution must be clamped to upper bound 2.0
         assert math.isclose(float(res.x[0]), 2.0, abs_tol=1e-5)
 
@@ -692,7 +655,7 @@ class TestFeature07JointOptimizationBoundary:
         assert evo.population_size == 2
         pop = evo._generate_population()
         assert len(pop) == 2
-        assert all(hasattr(ind, "ast") for ind in pop)
+        assert all(ind.ast is not None for ind in pop)
 
     def test_f07_t2_05_opt_max_iterations_one(self) -> None:
         """TC-F07-T2-05: Max iterations = 1 terminates cleanly after exactly 1 step."""
@@ -710,14 +673,11 @@ class TestFeature08RefinementVerificationBoundary:
     """Feature 8: Stage 5 (Refinement & Verification) - Boundary & Corner Cases"""
 
     def _get_verify_modules(self):
-        try:
-            from mathfield.core.verify.metrics import compute_metrics
-            from mathfield.core.verify.pruning import BICPruner
-            from mathfield.core.verify.renderer import ReferenceRenderer
+        from mathfield.core.verify.metrics import compute_metrics
+        from mathfield.core.verify.pruning import BICPruner
+        from mathfield.core.verify.renderer import ReferenceRenderer
 
-            return BICPruner, ReferenceRenderer, compute_metrics
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.verify is under active development in Milestone M2")
+        return BICPruner, ReferenceRenderer, compute_metrics
 
     def test_f08_t2_01_refine_bic_prune_all_insignificant(self) -> None:
         """TC-F08-T2-01: BIC pruning when all basis terms are pure noise prunes to minimal intercept term."""
@@ -732,11 +692,8 @@ class TestFeature08RefinementVerificationBoundary:
 
     def test_f08_t2_02_refine_supersampling_pixel_integration(self) -> None:
         """TC-F08-T2-02: Re-renderer computes 2x supersampling without blur or spatial coordinate shift."""
-        try:
-            from mathfield.core.ast import parse
-            from mathfield.core.domain import CoordinateDomain2D
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.ast or domain under active development")
+        from mathfield.core.ast import parse
+        from mathfield.core.domain import CoordinateDomain2D
 
         _, ReferenceRenderer, _ = self._get_verify_modules()
         renderer = ReferenceRenderer()
@@ -782,12 +739,9 @@ class TestFeature09ColorAlphaBoundary:
     """Feature 9: Full-Colour & Alpha Support - Boundary & Corner Cases"""
 
     def _get_color_module(self):
-        try:
-            from mathfield.core.color import ColorSpace, ColorSpaceConverter
+        from mathfield.core.color import ColorSpace, ColorSpaceConverter
 
-            return ColorSpaceConverter, ColorSpace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.color is under active development in Milestone M2")
+        return ColorSpaceConverter, ColorSpace
 
     def test_f09_t2_01_color_fully_transparent(self) -> None:
         """TC-F09-T2-01: Fully transparent image (alpha=0 everywhere) yields zero alpha-weighted loss."""
@@ -866,8 +820,8 @@ class TestFeature10PrattParserBoundary:
 
         ast_large = parse("1e300 * x")
         ast_small = parse("1e-300 * y")
-        assert ast_large is not None
-        assert ast_small is not None
+        assert math.isclose(float(ast_large.left.value), 1e300, rel_tol=1e-12)
+        assert math.isclose(float(ast_small.left.value), 1e-300, rel_tol=1e-12)
 
     def test_f10_t2_04_parser_consecutive_binary_operators(self) -> None:
         """TC-F10-T2-04: Consecutive binary operators ('x ++ y', 'x * / y') raises ParseError."""
@@ -1153,12 +1107,9 @@ class TestFeature15HighResTilingBoundary:
     """Feature 15: 8K High-Resolution Tiling & Memory Management - Boundary & Corner Cases"""
 
     def _get_tiler_module(self):
-        try:
-            from mathfield.core.engine.tiler import DomainChunker, TileInfo
+        from mathfield.core.engine.tiler import DomainChunker, TileInfo
 
-            return DomainChunker, TileInfo
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.engine.tiler is under active development in Milestone M3")
+        return DomainChunker, TileInfo
 
     def test_f15_t2_01_tiling_tile_larger_than_image(self) -> None:
         """TC-F15-T2-01: Tile size larger than image (1024x1024 tile on 64x64) produces single tile."""
@@ -1206,16 +1157,13 @@ class TestFeature16CheckpointBoundary:
     """Feature 16: Robust Bit-Exact Job Checkpointing - Boundary & Corner Cases"""
 
     def _get_checkpoint_module(self):
-        try:
-            from mathfield.core.checkpoint.manager import (
-                CheckpointCorruptError,
-                CheckpointManager,
-            )
-            from mathfield.core.checkpoint.serializer import CheckpointSerializer
+        from mathfield.core.checkpoint.manager import (
+            CheckpointCorruptError,
+            CheckpointManager,
+        )
+        from mathfield.core.checkpoint.serializer import CheckpointSerializer
 
-            return CheckpointManager, CheckpointCorruptError, CheckpointSerializer
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.checkpoint is under active development in Milestone M3")
+        return CheckpointManager, CheckpointCorruptError, CheckpointSerializer
 
     def test_f16_t2_01_checkpoint_atomic_write_simulation(self, e2e_temp_dir: Path) -> None:
         """TC-F16-T2-01: Two-phase atomic write pattern (.tmp then rename) leaves existing checkpoint intact."""
@@ -1281,12 +1229,9 @@ class TestFeature17MainUIWorkspaceBoundary:
     """Feature 17: Main UI Workspace - Boundary & Corner Cases"""
 
     def _get_workspace(self):
-        try:
-            from mathfield.ui.workspaces.main_workspace import MainWorkspace
+        from mathfield.ui.workspaces.main_workspace import MainWorkspace
 
-            return MainWorkspace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workspaces.main_workspace is under active development in Milestone M4")
+        return MainWorkspace
 
     def test_f17_t2_01_ui_main_drop_non_image(self, e2e_temp_dir: Path) -> None:
         """TC-F17-T2-01: Drag-and-drop non-image file (.txt or .exe) rejects with status notification."""
@@ -1295,7 +1240,7 @@ class TestFeature17MainUIWorkspaceBoundary:
         bad_file = e2e_temp_dir / "text_doc.txt"
         bad_file.write_text("Not an image file", encoding="utf-8")
         res = ws.load_image(bad_file)
-        assert res is False or ws.get_status_text() != ""
+        assert res is False and "error loading image" in ws.get_status_text().lower()
 
     def test_f17_t2_02_ui_main_zoom_boundaries(self) -> None:
         """TC-F17-T2-02: Zoom factor boundaries (1000x zoom-in, 0.001x zoom-out) clamped to [0.01, 100.0]."""
@@ -1320,13 +1265,13 @@ class TestFeature17MainUIWorkspaceBoundary:
         MainWorkspace = self._get_workspace()
         ws = MainWorkspace()
         ws.resize(400, 300)
-        assert ws.width() == 400 or hasattr(ws, "resize")
+        assert (ws.width(), ws.height()) == (400, 300)
 
     def test_f17_t2_05_ui_main_headless_launch(self) -> None:
         """TC-F17-T2-05: Headless mode launch initializes UI model without display server crashes."""
         MainWorkspace = self._get_workspace()
         ws = MainWorkspace()
-        assert ws is not None
+        assert ws.image_dimensions == (0, 0) and ws.get_status_text() == "Ready"
 
 
 # ==============================================================================
@@ -1338,12 +1283,9 @@ class TestFeature18EquationUIBoundary:
     """Feature 18: Equation UI Workspace - Boundary & Corner Cases"""
 
     def _get_workspace(self):
-        try:
-            from mathfield.ui.workspaces.equation_workspace import EquationWorkspace
+        from mathfield.ui.workspaces.equation_workspace import EquationWorkspace
 
-            return EquationWorkspace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workspaces.equation_workspace is under active development in Milestone M4")
+        return EquationWorkspace
 
     def test_f18_t2_01_ui_eq_huge_equation_text(self) -> None:
         """TC-F18-T2-01: Huge equation (> 1000 characters) wraps or formats horizontally scrollable card."""
@@ -1351,7 +1293,7 @@ class TestFeature18EquationUIBoundary:
         ws = EquationWorkspace()
         long_formula = " + ".join([f"c{i} * x^{i}" for i in range(100)])
         rendered = ws.render_latex_card(long_formula)
-        assert rendered is not None
+        assert isinstance(rendered, bytes) and rendered.startswith(b"\x89PNG")
 
     def test_f18_t2_02_ui_eq_slider_extreme_limits(self) -> None:
         """TC-F18-T2-02: Parameter slider dragged to extreme limits clamps to defined parameter domain."""
@@ -1380,7 +1322,7 @@ class TestFeature18EquationUIBoundary:
         EquationWorkspace = self._get_workspace()
         ws = EquationWorkspace()
         tree = ws.get_equation_tree()
-        assert tree is not None
+        assert tree["root"]["children"] == ["left_term", "right_term"]
 
 
 # ==============================================================================
@@ -1392,12 +1334,9 @@ class TestFeature19RegionAnalysisUIBoundary:
     """Feature 19: Region Analysis UI Workspace - Boundary & Corner Cases"""
 
     def _get_workspace(self):
-        try:
-            from mathfield.ui.workspaces.region_workspace import RegionWorkspace
+        from mathfield.ui.workspaces.region_workspace import RegionWorkspace
 
-            return RegionWorkspace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workspaces.region_workspace is under active development in Milestone M4")
+        return RegionWorkspace
 
     def test_f19_t2_01_ui_region_zero_area_selection(self) -> None:
         """TC-F19-T2-01: Zero-area rubber-band selection (0x0 box) rejected, retains previous ROI."""
@@ -1430,7 +1369,7 @@ class TestFeature19RegionAnalysisUIBoundary:
         ws = RegionWorkspace()
         for mode in ["mse", "ssim", "ciede2000", "signed_diff", "abs_diff"]:
             hm = ws.generate_heatmap(mode)
-            assert hm is not None
+            assert isinstance(hm, np.ndarray) and hm.shape == (64, 64)
 
     def test_f19_t2_05_ui_region_boundary_blending(self) -> None:
         """TC-F19-T2-05: Local re-optimization with C^2 boundary blending matches global field."""
@@ -1449,14 +1388,11 @@ class TestFeature20OptimizationUIBoundary:
     """Feature 20: Optimization UI Workspace - Boundary & Corner Cases"""
 
     def _get_workspace(self):
-        try:
-            from mathfield.ui.workspaces.optimization_workspace import (
-                OptimizationWorkspace,
-            )
+        from mathfield.ui.workspaces.optimization_workspace import (
+            OptimizationWorkspace,
+        )
 
-            return OptimizationWorkspace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workspaces.optimization_workspace is under active development in Milestone M4")
+        return OptimizationWorkspace
 
     def test_f20_t2_01_ui_opt_rapid_pause_resume(self) -> None:
         """TC-F20-T2-01: Rapid pause/resume cycling (10 times in 1s) avoids thread deadlock."""
@@ -1498,7 +1434,7 @@ class TestFeature20OptimizationUIBoundary:
         OptimizationWorkspace = self._get_workspace()
         ws = OptimizationWorkspace()
         ws.update_metrics(iteration=1, metrics={"loss": float("inf")})
-        assert ws.has_diverged is True or ws.get_status() == "DIVERGED"
+        assert ws.has_diverged is True and ws.get_status() == "DIVERGED"
 
 
 # ==============================================================================
@@ -1510,12 +1446,9 @@ class TestFeature21ResearchUIBoundary:
     """Feature 21: Research UI Workspace - Boundary & Corner Cases"""
 
     def _get_workspace(self):
-        try:
-            from mathfield.ui.workspaces.research_workspace import ResearchWorkspace
+        from mathfield.ui.workspaces.research_workspace import ResearchWorkspace
 
-            return ResearchWorkspace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workspaces.research_workspace is under active development in Milestone M4")
+        return ResearchWorkspace
 
     def test_f21_t2_01_ui_research_large_candidate_list(self) -> None:
         """TC-F21-T2-01: Candidate log with 500 rejected expressions renders without memory bloat."""
@@ -1573,18 +1506,19 @@ class TestFeature22NonBlockingBackgroundBoundary:
     """Feature 22: Non-Blocking Background Execution - Boundary & Corner Cases"""
 
     def _get_worker_module(self):
-        try:
-            from mathfield.ui.workers import OptimizationWorker, WorkerSignals
+        from mathfield.ui.workers import OptimizationWorker, WorkerSignals
 
-            return OptimizationWorker, WorkerSignals
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workers is under active development in Milestone M4")
+        return OptimizationWorker, WorkerSignals
 
     def test_f22_t2_01_ui_worker_exception_handling(self) -> None:
         """TC-F22-T2-01: Worker exception during computation emits error signal without crashing process."""
         OptimizationWorker, _ = self._get_worker_module()
         worker = OptimizationWorker()
-        assert hasattr(worker, "signals")
+        errors: list[str] = []
+        worker.signals.error.connect(errors.append)
+        assert worker.start_job(lambda: 1 / 0) is True
+        assert worker.wait(2000) is True
+        assert errors and "division by zero" in errors[0]
 
     def test_f22_t2_02_ui_worker_concurrent_job_rejection(self) -> None:
         """TC-F22-T2-02: Multiple concurrent worker start requests cleanly rejects second job with busy status."""
@@ -1606,13 +1540,38 @@ class TestFeature22NonBlockingBackgroundBoundary:
         """TC-F22-T2-04: High-frequency signal emission (1000 updates/s) does not drop final completion signal."""
         _, WorkerSignals = self._get_worker_module()
         signals = WorkerSignals()
-        assert hasattr(signals, "iteration_completed")
+        received: list[tuple] = []
+        signals.iteration_completed.connect(lambda i, info: received.append((i, info)))
+        signals.iteration_completed.emit(9, {"loss": 0.05})
+        assert received == [(9, {"loss": 0.05})]
+
+    def test_f22_t2_04b_ui_worker_high_frequency_completion(self) -> None:
+        """1000 rapid emissions still deliver the final completion signal."""
+        OptimizationWorker, _ = self._get_worker_module()
+        completions: list[int] = []
+
+        def burst() -> int:
+            for index in range(1000):
+                worker.signals.iteration_completed.emit(index, {"i": index})
+            return 1000
+
+        worker = OptimizationWorker(burst)
+        worker.signals.iteration_completed.connect(lambda *_: None)
+        worker.signals.finished.connect(completions.append)
+        assert worker.start_job() is True
+        assert worker.wait(3000) is True
+        assert completions == [1000]
 
     def test_f22_t2_05_ui_worker_thread_affinity(self) -> None:
         """TC-F22-T2-05: Thread affinity verification ensures heavy computation runs off the main GUI thread."""
         OptimizationWorker, _ = self._get_worker_module()
-        worker = OptimizationWorker()
-        assert worker is not None
+        main_thread = threading.get_ident()
+        execution_threads: list[int] = []
+
+        worker = OptimizationWorker(lambda: execution_threads.append(threading.get_ident()))
+        assert worker.start_job() is True
+        assert worker.wait(2000) is True
+        assert execution_threads and execution_threads[0] != main_thread
 
 
 # ==============================================================================
@@ -1624,12 +1583,9 @@ class TestFeature23ImageExportsBoundary:
     """Feature 23: Image Exports (PNG & JPG) - Boundary & Corner Cases"""
 
     def _get_raster_module(self):
-        try:
-            from mathfield.export.raster import export_jpg, export_png
+        from mathfield.export.raster import export_jpg, export_png
 
-            return export_png, export_jpg
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.raster is under active development in Milestone M5")
+        return export_png, export_jpg
 
     def test_f23_t2_01_export_raster_zero_dimension(self, e2e_temp_dir: Path) -> None:
         """TC-F23-T2-01: Zero-dimension export request (0x0) raises ValueError without crash."""
@@ -1684,12 +1640,9 @@ class TestFeature24DocumentedSVGBoundary:
     """Feature 24: Documented SVG Export - Boundary & Corner Cases"""
 
     def _get_svg_module(self):
-        try:
-            from mathfield.export.svg import export_svg
+        from mathfield.export.svg import export_svg
 
-            return export_svg
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.svg is under active development in Milestone M5")
+        return export_svg
 
     def test_f24_t2_01_export_svg_intricate_path_simplification(self, e2e_temp_dir: Path) -> None:
         """TC-F24-T2-01: Vector mode on intricate high-frequency image bounds file size or falls back safely."""
@@ -1744,12 +1697,9 @@ class TestFeature25StandalonePythonReproductionBoundary:
     """Feature 25: Standalone Python Reproduction Script - Boundary & Corner Cases"""
 
     def _get_python_export_module(self):
-        try:
-            from mathfield.export.python_script import export_standalone_script
+        from mathfield.export.python_script import export_standalone_script
 
-            return export_standalone_script
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.python_script is under active development in Milestone M5")
+        return export_standalone_script
 
     def test_f25_t2_01_repro_script_tiny_resolution(self, e2e_temp_dir: Path) -> None:
         """TC-F25-T2-01: Standalone script with extreme resolution (2 2) outputs valid 2x2 image."""
@@ -1823,13 +1773,10 @@ class TestFeature26StandaloneLaTeXPDFReportBoundary:
     """Feature 26: Standalone LaTeX & PDF Report - Boundary & Corner Cases"""
 
     def _get_latex_pdf_modules(self):
-        try:
-            from mathfield.export.latex_report import export_latex_report
-            from mathfield.export.pdf_report import export_pdf_report
+        from mathfield.export.latex_report import export_latex_report
+        from mathfield.export.pdf_report import export_pdf_report
 
-            return export_latex_report, export_pdf_report
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export latex/pdf reports are under active development in Milestone M5")
+        return export_latex_report, export_pdf_report
 
     def test_f26_t2_01_export_latex_100_parameters_table(self, e2e_temp_dir: Path) -> None:
         """TC-F26-T2-01: LaTeX export with 100 parameters formats multi-page table with balanced braces."""
@@ -1894,17 +1841,14 @@ class TestFeature27CSVDataJSONProjectBoundary:
     """Feature 27: CSV Data & JSON Project Format - Boundary & Corner Cases"""
 
     def _get_project_csv_modules(self):
-        try:
-            from mathfield.export.csv_export import export_csv_parameters
-            from mathfield.export.project_file import (
-                ProjectFileError,
-                load_project,
-                save_project,
-            )
+        from mathfield.export.csv_export import export_csv_parameters
+        from mathfield.export.project_file import (
+            ProjectFileError,
+            load_project,
+            save_project,
+        )
 
-            return export_csv_parameters, save_project, load_project, ProjectFileError
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export csv/project is under active development in Milestone M5")
+        return export_csv_parameters, save_project, load_project, ProjectFileError
 
     def test_f27_t2_01_project_json_ieee_special_floats(self, e2e_temp_dir: Path) -> None:
         """TC-F27-T2-01: Serializer uses IEEE hex floats to handle special floats without JSON corruption."""
@@ -1961,7 +1905,7 @@ class TestFeature27CSVDataJSONProjectBoundary:
         bom_file = e2e_temp_dir / "bom.mathfield"
         bom_file.write_bytes(b"\xef\xbb\xbf" + content.encode("utf-8"))
         data = load_project(bom_file)
-        assert data is not None
+        assert data.get("schema_version") == "1.0.0"
 
 
 # ==============================================================================
@@ -1973,12 +1917,9 @@ class TestFeature28ReproducibilityPackageBoundary:
     """Feature 28: Standalone Reproducibility Package Bundle - Boundary & Corner Cases"""
 
     def _get_bundle_module(self):
-        try:
-            from mathfield.export.bundle import export_bundle
+        from mathfield.export.bundle import export_bundle
 
-            return export_bundle
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.bundle is under active development in Milestone M5")
+        return export_bundle
 
     def test_f28_t2_01_bundle_nested_target_directory(self, e2e_temp_dir: Path) -> None:
         """TC-F28-T2-01: Bundle creation in non-existent nested directory automatically creates parents."""
@@ -2090,14 +2031,11 @@ class TestFeature30EmpiricalBenchmarkingBoundary:
     """Feature 30: Empirical Benchmarking Harness - Boundary & Corner Cases"""
 
     def _get_benchmarks_module(self):
-        try:
-            import benchmarks.ablations as ablations_mod
-            import benchmarks.baselines as baselines_mod
-            import benchmarks.run_benchmarks as run_benchmarks_mod
+        import benchmarks.ablations as ablations_mod
+        import benchmarks.baselines as baselines_mod
+        import benchmarks.run_benchmarks as run_benchmarks_mod
 
-            return baselines_mod, ablations_mod, run_benchmarks_mod
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("benchmarks package is under active development in Milestone M6")
+        return baselines_mod, ablations_mod, run_benchmarks_mod
 
     def test_f30_t2_01_benchmark_zero_size_input(self) -> None:
         """TC-F30-T2-01: Benchmark on zero-size input raises ValueError before timing starts."""
@@ -2148,8 +2086,8 @@ class TestFeature31TechnicalPaperBoundary:
         """TC-F31-T2-01: All \\cite{...} keys in paper draft have corresponding entries in .bib file."""
         paper_tex = PROJECT_ROOT / "docs" / "paper" / "mathfield_paper.tex"
         bib_file = PROJECT_ROOT / "docs" / "paper" / "references.bib"
-        if not paper_tex.exists() or not bib_file.exists():
-            pytest.skip("Paper draft or bibliography under active development in parallel documentation track")
+        assert paper_tex.is_file(), "Paper draft is missing"
+        assert bib_file.is_file(), "Bibliography is missing"
 
         tex_content = paper_tex.read_text(encoding="utf-8")
         bib_content = bib_file.read_text(encoding="utf-8")
@@ -2162,8 +2100,7 @@ class TestFeature31TechnicalPaperBoundary:
     def test_f31_t2_02_paper_figure_ref_labels(self) -> None:
         """TC-F31-T2-02: All \\ref{fig:...} references in paper draft match declared \\label{fig:...}."""
         paper_tex = PROJECT_ROOT / "docs" / "paper" / "mathfield_paper.tex"
-        if not paper_tex.exists():
-            pytest.skip("Paper draft under active development in parallel documentation track")
+        assert paper_tex.exists(), "Required artefact missing: paper_tex"
 
         tex_content = paper_tex.read_text(encoding="utf-8")
         refs = re.findall(r"\\ref\{(fig:[^}]+)\}", tex_content)
@@ -2174,8 +2111,7 @@ class TestFeature31TechnicalPaperBoundary:
     def test_f31_t2_03_readme_markdown_relative_links(self) -> None:
         """TC-F31-T2-03: All relative markdown links in README.md point to valid existing files."""
         readme = PROJECT_ROOT / "README.md"
-        if not readme.exists():
-            pytest.skip("README.md under active development in parallel documentation track")
+        assert readme.exists(), "Required artefact missing: readme"
 
         content = readme.read_text(encoding="utf-8")
         links = re.findall(r"\[.*?\]\((?!http|#)(.*?)\)", content)
@@ -2187,8 +2123,7 @@ class TestFeature31TechnicalPaperBoundary:
     def test_f31_t2_04_readme_powershell_windows_syntax(self) -> None:
         """TC-F31-T2-04: Windows PowerShell quickstart commands in README.md use valid Windows syntax."""
         readme = PROJECT_ROOT / "README.md"
-        if not readme.exists():
-            pytest.skip("README.md under active development in parallel documentation track")
+        assert readme.exists(), "Required artefact missing: readme"
 
         content = readme.read_text(encoding="utf-8")
         assert "python" in content.lower()
@@ -2197,8 +2132,7 @@ class TestFeature31TechnicalPaperBoundary:
         """TC-F31-T2-05: Paper draft or README contains explicit computational honesty statement."""
         paper_tex = PROJECT_ROOT / "docs" / "paper" / "mathfield_paper.tex"
         readme = PROJECT_ROOT / "README.md"
-        if not paper_tex.exists() and not readme.exists():
-            pytest.skip("Paper draft and README under active development in parallel documentation track")
+        assert paper_tex.is_file() or readme.is_file(), "Both paper draft and README are missing"
 
         content = ""
         if paper_tex.exists():

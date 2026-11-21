@@ -56,11 +56,12 @@ def compile_numpy(node: ASTNode) -> Callable[[np.ndarray, np.ndarray, np.ndarray
     @functools.wraps(raw_fn)
     def vector_eval(X: np.ndarray, Y: np.ndarray, params: np.ndarray) -> np.ndarray:
         res = raw_fn(X, Y, params)
+        # Constant / parameter sub-expressions must not inherit the *coordinate*
+        # dtype: an integer pixel grid X would otherwise truncate 0.5 to 0.
         if np.isscalar(res):
-            return np.full_like(X, res, dtype=X.dtype)
-        # In case a 0-d array is returned
+            return np.full(X.shape, float(res), dtype=np.float64)
         if isinstance(res, np.ndarray) and res.ndim == 0:
-            return np.full_like(X, float(res), dtype=X.dtype)
+            return np.full(X.shape, float(res), dtype=np.float64)
         return res
 
     _COMPILATION_CACHE[node_hash] = vector_eval

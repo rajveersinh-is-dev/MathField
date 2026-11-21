@@ -20,12 +20,21 @@ dependencies = [
     "reportlab>=3.6.0",
 ]
 
+[tool.setuptools]
+# The repository also contains tests/, benchmarks/, native/ and output/,
+# so explicit discovery is required to avoid packaging generated artifacts.
+packages = { find = { include = ["mathfield*"] } }
+
+[tool.setuptools.package-data]
+"mathfield.core.engine" = ["*.dll", "*.so", "*.dylib"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-socket>=0.6.0",
     "ruff>=0.1.0",
+    "imageio-ffmpeg>=0.5.0",
 ]
 gpu = [
     "cupy-cuda12x>=12.0.0",

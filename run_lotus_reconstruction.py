@@ -14,6 +14,7 @@ Generates full suite of deliverables:
 
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
 import time
@@ -36,11 +37,23 @@ from mathfield.export.python_script import export_standalone_script
 from mathfield.export.raster import export_jpg, export_png
 from mathfield.export.svg import export_svg
 
-INPUT_IMAGE = Path(
-    r"C:/Users/davea/.gemini/antigravity/brain/8953e3b7-d601-4777-8b63-fe5f1fe32be4/.user_uploaded/media_1794844888796_2afd2c38.jpg"
-)
-OUTPUT_DIR = Path(r"c:/Users/davea/OneDrive/Desktop/MathField/output/lotus_maximum_quality")
-ARTIFACT_DIR = Path(r"C:/Users/davea/.gemini/antigravity/brain/8953e3b7-d601-4777-8b63-fe5f1fe32be4")
+REPO_ROOT = Path(__file__).resolve().parent
+INPUT_IMAGE = REPO_ROOT / "examples/sample_spectrum.png"
+OUTPUT_DIR = REPO_ROOT / "output/lotus_maximum_quality"
+ARTIFACT_DIR: Path | None = None
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--image", type=Path, default=INPUT_IMAGE, help="Source image path")
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR, help="Deliverable output directory")
+    parser.add_argument(
+        "--artifact-dir",
+        type=Path,
+        default=None,
+        help="Optional directory to copy presentation assets into",
+    )
+    return parser.parse_args(argv)
 
 
 def render_continuous_super_resolution(
@@ -125,7 +138,15 @@ def render_continuous_super_resolution(
     return super_recon
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    global INPUT_IMAGE, OUTPUT_DIR, ARTIFACT_DIR
+    args = parse_args(argv)
+    INPUT_IMAGE = args.image.resolve()
+    OUTPUT_DIR = args.output_dir.resolve()
+    ARTIFACT_DIR = args.artifact_dir.resolve() if args.artifact_dir else None
+
+    if not INPUT_IMAGE.is_file():
+        raise FileNotFoundError(f"Input image not found: {INPUT_IMAGE}")
     print(f"Loading input image from: {INPUT_IMAGE}")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -421,27 +442,29 @@ def main() -> None:
     )
     print("✔ Exported lotus_mathematical_artwork (Square & Portrait posters in Hamid Naderi Yeganeh style)")
 
-    # Copy visual comparison images and artwork posters into artifact directory
-    artifact_orig = ARTIFACT_DIR / "lotus_original.jpg"
-    artifact_recon = ARTIFACT_DIR / "lotus_reconstructed.png"
-    artifact_diff = ARTIFACT_DIR / "lotus_error_map.png"
+    # Optional presentation-asset copy (opt-in, no machine-specific path).
+    if ARTIFACT_DIR is not None:
+        ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+        artifact_orig = ARTIFACT_DIR / "lotus_original.jpg"
+        artifact_recon = ARTIFACT_DIR / "lotus_reconstructed.png"
+        artifact_diff = ARTIFACT_DIR / "lotus_error_map.png"
 
-    shutil.copy2(INPUT_IMAGE, artifact_orig)
-    Image.fromarray((np.clip(recon_arr, 0.0, 1.0) * 255.0).astype(np.uint8)).save(artifact_recon)
+        shutil.copy2(INPUT_IMAGE, artifact_orig)
+        Image.fromarray((np.clip(recon_arr, 0.0, 1.0) * 255.0).astype(np.uint8)).save(artifact_recon)
 
-    # Compute absolute error heatmap
-    diff = np.abs(recon_arr - arr)
-    diff_mag = np.mean(diff, axis=-1)
-    diff_norm = np.clip(diff_mag * 5.0 * 255.0, 0, 255).astype(np.uint8)  # 5x amplified for visualization
-    Image.fromarray(diff_norm, mode="L").save(artifact_diff)
+        diff = np.abs(recon_arr - arr)
+        diff_mag = np.mean(diff, axis=-1)
+        diff_norm = np.clip(diff_mag * 5.0 * 255.0, 0, 255).astype(np.uint8)  # 5x amplified for visualization
+        Image.fromarray(diff_norm, mode="L").save(artifact_diff)
 
-    shutil.copy2(OUTPUT_DIR / "lotus_mathematical_artwork.png", ARTIFACT_DIR / "lotus_mathematical_artwork.png")
-    shutil.copy2(OUTPUT_DIR / "lotus_mathematical_artwork.jpg", ARTIFACT_DIR / "lotus_mathematical_artwork.jpg")
-    shutil.copy2(
-        OUTPUT_DIR / "lotus_mathematical_artwork_portrait.png", ARTIFACT_DIR / "lotus_mathematical_artwork_portrait.png"
-    )
+        shutil.copy2(OUTPUT_DIR / "lotus_mathematical_artwork.png", ARTIFACT_DIR / "lotus_mathematical_artwork.png")
+        shutil.copy2(OUTPUT_DIR / "lotus_mathematical_artwork.jpg", ARTIFACT_DIR / "lotus_mathematical_artwork.jpg")
+        shutil.copy2(
+            OUTPUT_DIR / "lotus_mathematical_artwork_portrait.png",
+            ARTIFACT_DIR / "lotus_mathematical_artwork_portrait.png",
+        )
+        print("\n✔ Presentation assets copied to the requested artifact directory.")
 
-    print("\n✔ Visual assets and mathematical artwork posters copied to artifact directory for presentation.")
     print("All tasks completed successfully!")
 
 

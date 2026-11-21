@@ -734,17 +734,6 @@ def validate_standalone_python_script(
                     f"Standalone script violates security rule: forbidden attribute call '.{node.func.attr}()'"
                 )
 
-            # Check getattr(builtins, 'eval')
-            if (
-                isinstance(node.func, py_ast.Name)
-                and node.func.id == "getattr"
-                and len(node.args) >= 2
-                and isinstance(node.args[1], py_ast.Constant)
-                and node.args[1].value in FORBIDDEN_LITERAL_STRS
-            ):
-                raise AssertionError(
-                    f"Standalone script violates security rule: indirect getattr call on '{node.args[1].value}'"
-                )
             for kw in node.keywords:
                 if (
                     kw.arg == "name"

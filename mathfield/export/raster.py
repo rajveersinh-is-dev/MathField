@@ -6,8 +6,9 @@ Continuous-resolution raster image exporter (PNG with alpha channel, quality-sca
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 from PIL import Image
@@ -15,6 +16,29 @@ from PIL.PngImagePlugin import PngInfo
 
 from mathfield.core.ast.parser import parse
 from mathfield.core.engine.cpu_numpy import evaluate_numpy
+
+
+def to_uint8_array(arr: np.ndarray) -> np.ndarray:
+    """Convert float image data in [0,1] or [-1,1] to uint8 bytes."""
+    data = np.asarray(arr)
+    if data.dtype in (np.float32, np.float64):
+        if data.min() < 0.0 and data.max() <= 1.0:
+            data = (data + 1.0) * 127.5
+        elif data.max() <= 1.0:
+            data = data * 255.0
+    return np.clip(data, 0, 255).astype(np.uint8)
+
+
+def natural_key(name: str) -> Tuple[int, Union[int, str]]:
+    """Sort c0, c1, ..., c10 numerically instead of lexicographically."""
+    prefix = ""
+    digits = ""
+    for char in name:
+        if char.isdigit():
+            digits += char
+        else:
+            prefix += char
+    return (0, int(digits)) if digits else (1, name)
 
 
 def _model_to_image(
@@ -39,8 +63,7 @@ def _model_to_image(
 
     if isinstance(model, np.ndarray):
         arr = model
-        if arr.max() <= 1.0 and arr.dtype in (np.float32, np.float64):
-            arr = np.clip(arr * 255.0, 0, 255).astype(np.uint8)
+        arr = to_uint8_array(arr)
         img = Image.fromarray(arr)
         if width and height and img.size != (width, height):
             return img.resize((width, height), Image.Resampling.BILINEAR)
@@ -51,8 +74,7 @@ def _model_to_image(
 
     if "rendered_image" in model and isinstance(model["rendered_image"], np.ndarray):
         arr = model["rendered_image"]
-        if arr.max() <= 1.0 and arr.dtype in (np.float32, np.float64):
-            arr = np.clip(arr * 255.0, 0, 255).astype(np.uint8)
+        arr = to_uint8_array(arr)
         img = Image.fromarray(arr)
         if width and height and img.size != (width, height):
             return img.resize((width, height), Image.Resampling.BILINEAR)
@@ -78,7 +100,7 @@ def _model_to_image(
     params = model.get("parameters", {})
     if isinstance(params, dict):
         p_list = []
-        for k in sorted(params.keys()):
+        for k in sorted(params.keys(), key=natural_key):
             val = params[k]
             if isinstance(val, dict):
                 p_list.append(float(val.get("value", 0.0)))
@@ -92,7 +114,7 @@ def _model_to_image(
 
     has_alpha = "A" in expressions or "alpha" in expressions
 
-    def _eval_expr(expr_val: Any) -> np.ndarray:
+    def _eval_expr(expr_val: Any, allow_label: bool = False) -> np.ndarray:
         if isinstance(expr_val, (int, float)):
             return np.full((h, w), float(expr_val), dtype=np.float64)
         if isinstance(expr_val, str):
@@ -100,8 +122,14 @@ def _model_to_image(
                 ast_node = parse(expr_val)
                 val = evaluate_numpy(ast_node, X, Y, p_arr)
                 return val
-            except Exception:
-                return np.full((h, w), 0.5, dtype=np.float64)
+            except Exception as exc:
+                if allow_label:
+                    # Some projects store a descriptive model label in the
+                    # `formula` metadata field; use a documented neutral field
+                    # instead of silently inventing coefficients.
+                    warnings.warn(f"Formula {expr_val!r} is metadata, not an expression: {exc}", stacklevel=2)
+                    return np.full((h, w), 0.5, dtype=np.float64)
+                raise ValueError(f"Cannot evaluate channel expression {expr_val!r}: {exc}") from exc
         return np.zeros((h, w), dtype=np.float64)
 
     if has_alpha:
@@ -134,7 +162,7 @@ def _model_to_image(
         return Image.fromarray(rgba, mode="RGBA")
     else:
         if "formula" in expressions:
-            f_val = _eval_expr(expressions["formula"])
+            f_val = _eval_expr(expressions["formula"], allow_label=True)
             scaled = np.clip((f_val + 1.0) * 127.5 if f_val.min() < 0.0 else f_val * 255.0, 0, 255).astype(np.uint8)
             rgb = np.stack([scaled, scaled, scaled], axis=-1)
             return Image.fromarray(rgb, mode="RGB")

@@ -13,6 +13,8 @@ or margin overflow across arbitrary canvas resolutions.
 
 from __future__ import annotations
 
+import re
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
@@ -57,12 +59,45 @@ def generate_math_panel(
     patch_eqs = result.get("patch_equations") or []
     expressions = result.get("expressions") or {}
 
+    def _to_math_tex(eq_str: str) -> str:
+        """Convert human-readable coefficient strings into valid mathtext."""
+        text = eq_str.replace("π", r"\pi").replace("·", r" \cdot ")
+        text = re.sub(r"T_(\d+)", r"T_{\1}", text)
+        text = re.sub(r"\[(\d+) total terms\]", r"[\1 terms]", text)
+        return text
+
+    def _compact_terms(eq_str: str, max_terms: int = 4) -> str:
+        """Truncate by *complete* signed terms, respecting parenthesis depth."""
+        if not eq_str:
+            return ""
+        parts: List[str] = []
+        depth = 0
+        start = 0
+        for idx, char in enumerate(eq_str):
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+            elif char in "+-" and depth == 0 and idx > start:
+                parts.append(eq_str[start:idx].strip())
+                start = idx
+        parts.append(eq_str[start:].strip())
+        if len(parts) <= max_terms:
+            return " ".join(parts)
+        return " ".join(parts[:max_terms]) + r" + \dots"
+
     if global_eqs and "R" in global_eqs:
-        g_r_text = rf"$G_R(x, y) = {global_eqs['R']}$"
-        g_gb_text = rf"$G_G(x, y) = {global_eqs.get('G', '')}, \quad G_B(x, y) = {global_eqs.get('B', '')}$"
+        g_r_text = rf"$G_R(x, y) = {_to_math_tex(_compact_terms(global_eqs['R'], 6))}$"
+        g_gb_text = (
+            rf"$G_G(x, y) = {_to_math_tex(_compact_terms(global_eqs.get('G', ''), 4))}, "
+            rf"\quad G_B(x, y) = {_to_math_tex(_compact_terms(global_eqs.get('B', ''), 4))}$"
+        )
     elif expressions and "R" in expressions:
-        g_r_text = rf"$R(x, y) = {expressions['R']}$"
-        g_gb_text = rf"$G(x, y) = {expressions.get('G', '')}, \quad B(x, y) = {expressions.get('B', '')}$"
+        g_r_text = rf"$R(x, y) = {_to_math_tex(expressions['R'])}$"
+        g_gb_text = (
+            rf"$G(x, y) = {_to_math_tex(expressions.get('G', ''))}, "
+            rf"\quad B(x, y) = {_to_math_tex(expressions.get('B', ''))}$"
+        )
     else:
         g_r_text = r"$G_R(x, y) = \sum a_{i,j,R} T_i(x) T_j(y) + \sum b_{\mathbf{k},R} \cos(\mathbf{k} \cdot \mathbf{x}) + \dots$"
         g_gb_text = r"$G_G(x, y) = \sum a_{i,j,G} T_i(x) T_j(y) + \dots, \quad G_B(x, y) = \sum a_{i,j,B} T_i(x) T_j(y) + \dots$"
@@ -142,17 +177,20 @@ def generate_math_panel(
     ]
 
     renderer = fig.canvas.get_renderer()
-    max_w = width_px * 0.90  # Leave at least 5% margin on each side (total 10% horizontal margin)
+    max_w = width_px * 0.88  # at least 6% margin on each side
 
-    # Render each text element with dynamic bounding-box autofit
+    # Measure text sizes without rebuilding the whole canvas on every step.
     for y_pos, text_str, base_fs, is_bold in spec_lines:
         weight = "bold" if is_bold else "normal"
         t = fig.text(0.5, y_pos, text_str, fontsize=base_fs, ha="center", va="center", weight=weight)
         bbox = t.get_window_extent(renderer)
-        if bbox.width > max_w:
+        while bbox.width > max_w and t.get_fontsize() > 3.0:
             factor = (max_w / bbox.width) * 0.95
-            new_fs = max(3.5, base_fs * factor)
+            new_fs = max(3.0, t.get_fontsize() * factor)
             t.set_fontsize(new_fs)
+            bbox = t.get_window_extent(renderer)
+        if bbox.width > max_w:
+            warnings.warn("Artwork poster text could not be autofitted without clipping", stacklevel=2)
 
     fig.canvas.draw()
     rgba = np.asarray(fig.canvas.buffer_rgba())
@@ -188,10 +226,9 @@ def export_artwork_poster(
         recon_data = result.get("rendered_image")
 
     if isinstance(recon_data, np.ndarray):
-        arr = recon_data
-        if arr.max() <= 1.0 and arr.dtype in (np.float32, np.float64):
-            arr = np.clip(arr * 255.0, 0, 255).astype(np.uint8)
-        recon_img = Image.fromarray(arr)
+        from mathfield.export.raster import to_uint8_array
+
+        recon_img = Image.fromarray(to_uint8_array(recon_data))
     elif isinstance(recon_data, Image.Image):
         recon_img = recon_data
     else:

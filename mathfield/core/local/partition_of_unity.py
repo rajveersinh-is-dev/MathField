@@ -52,58 +52,50 @@ class WendlandPartitionOfUnity:
         y_flat = Y_arr.ravel()
         N = x_flat.size
 
-        # Unnormalized weights: W[k, :]
-        W = np.zeros((K, N), dtype=np.float64)
+        centers = np.array([leaf.center for leaf in leaves], dtype=np.float64)
+        half_widths = np.array([leaf.half_widths for leaf in leaves], dtype=np.float64)
 
-        for k, leaf in enumerate(leaves):
-            cx, cy = leaf.center
-            hx, hy = leaf.half_widths
-
-            # Expand radius by overlap ratio
-            Rx = (1.0 + self.overlap_ratio) * max(hx, 1e-6)
-            Ry = (1.0 + self.overlap_ratio) * max(hy, 1e-6)
-
-            dx = (x_flat - cx) / Rx
-            dy = (y_flat - cy) / Ry
-
+        def build(factor: float) -> np.ndarray:
+            W_local = np.zeros((K, N), dtype=np.float64)
+            Rx = factor * np.maximum(half_widths[:, 0], 1e-6)
+            Ry = factor * np.maximum(half_widths[:, 1], 1e-6)
+            dx = (x_flat[None, :] - centers[:, 0:1]) / Rx[:, None]
+            dy = (y_flat[None, :] - centers[:, 1:2]) / Ry[:, None]
             if self.separable:
-                adx = np.abs(dx)
-                ady = np.abs(dy)
-                mask = (adx < 1.0) & (ady < 1.0)
-                if np.any(mask):
-                    sx = adx[mask]
-                    sy = ady[mask]
-                    wx = ((1.0 - sx) ** 4.0) * (4.0 * sx + 1.0)
-                    wy = ((1.0 - sy) ** 4.0) * (4.0 * sy + 1.0)
-                    W[k, mask] = wx * wy
+                adx = np.minimum(np.abs(dx), 1.0)
+                ady = np.minimum(np.abs(dy), 1.0)
+                inside = (np.abs(dx) <= 1.0 + 1e-12) & (np.abs(dy) <= 1.0 + 1e-12)
+                wx = ((1.0 - adx) ** 4.0) * (4.0 * adx + 1.0)
+                wy = ((1.0 - ady) ** 4.0) * (4.0 * ady + 1.0)
+                W_local = np.where(inside, wx * wy, 0.0)
             else:
                 r = np.sqrt(dx * dx + dy * dy)
-                mask = r < 1.0
-                if np.any(mask):
-                    sr = r[mask]
-                    W[k, mask] = ((1.0 - sr) ** 4.0) * (4.0 * sr + 1.0)
+                sr = np.minimum(r, 1.0)
+                W_local = np.where(r <= 1.0 + 1e-12, ((1.0 - sr) ** 4.0) * (4.0 * sr + 1.0), 0.0)
+            return W_local
 
-        # Shepard Normalization
-        sum_W = np.sum(W, axis=0)
+        # Grow supports until every sample lies inside at least one window.
+        # A hard nearest-centre assignment would reintroduce the very seams
+        # this partition of unity exists to remove.
+        factor = 1.0 + max(self.overlap_ratio, 1e-6)
+        W = build(factor)
+        for _ in range(12):
+            if np.all(np.sum(W, axis=0) > 1e-12):
+                break
+            factor *= 1.25
+            W = build(factor)
 
-        # Protection for points outside patch overlap supports:
-        # assign to closest leaf center if sum_W is zero
-        zero_mask = sum_W < 1e-12
+        zero_mask = np.sum(W, axis=0) <= 1e-12
         if np.any(zero_mask):
-            zero_x = x_flat[zero_mask]
-            zero_y = y_flat[zero_mask]
-            # Find nearest leaf center for each zero point
-            centers = np.array([leaf.center for leaf in leaves])  # (K, 2)
-            for pt_idx in range(len(zero_x)):
-                px, py = zero_x[pt_idx], zero_y[pt_idx]
-                dists = (centers[:, 0] - px) ** 2 + (centers[:, 1] - py) ** 2
-                best_k = int(np.argmin(dists))
-                # Global index in flat array
-                glob_idx = np.where(zero_mask)[0][pt_idx]
-                W[best_k, glob_idx] = 1.0
-            sum_W = np.sum(W, axis=0)
+            # Smooth (Gaussian) fallback for samples outside the convex hull
+            # of all supports - continuous, unlike nearest-centre assignment.
+            zx, zy = x_flat[zero_mask], y_flat[zero_mask]
+            d2 = (centers[:, 0:1] - zx[None, :]) ** 2 + (centers[:, 1:2] - zy[None, :]) ** 2
+            scale = max(float(np.max(d2)), 1e-12)
+            W[:, zero_mask] = np.exp(-d2 / scale)
 
-        weights = W / sum_W
+        sum_W = np.sum(W, axis=0)
+        weights = W / np.maximum(sum_W, 1e-300)
 
         # Reshape to (K, H, W)
         return weights.reshape(K, *orig_shape)

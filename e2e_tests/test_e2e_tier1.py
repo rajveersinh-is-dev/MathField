@@ -20,6 +20,7 @@ import math
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict
@@ -61,8 +62,7 @@ class TestFeature01ModeA:
     def test_f01_01_mode_a_low_lambda_rich_model(self, synth_rgb_poly: Path, e2e_temp_dir: Path) -> None:
         """TC-F01-01: Weak regularization discovers richer expression with lower residual error."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_low = e2e_temp_dir / "f01_low"
         res = run_cli(
@@ -89,8 +89,7 @@ class TestFeature01ModeA:
     def test_f01_02_mode_a_high_lambda_parsimony(self, synth_rgb_poly: Path, e2e_temp_dir: Path) -> None:
         """TC-F01-02: Strong regularization enforces parsimonious model with bounded complexity."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_high = e2e_temp_dir / "f01_high"
         res = run_cli(
@@ -118,8 +117,7 @@ class TestFeature01ModeA:
     def test_f01_03_mode_a_interpretable_symbolic(self, synth_rgb_poly: Path, e2e_temp_dir: Path) -> None:
         """TC-F01-03: Anti-memorization invariant: model is symbolic AST, zero direct pixel lookup tables."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_dir = e2e_temp_dir / "f01_symbolic"
         res = run_cli(
@@ -154,8 +152,7 @@ class TestFeature01ModeA:
     def test_f01_04_mode_a_deterministic_seed(self, synth_rgb_poly: Path, e2e_temp_dir: Path) -> None:
         """TC-F01-04: Fixed seed yields reproducible AST structure across independent runs."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out1 = e2e_temp_dir / "f01_seed1"
         out2 = e2e_temp_dir / "f01_seed2"
@@ -200,8 +197,7 @@ class TestFeature01ModeA:
     def test_f01_05_mode_a_convergence_criteria(self, synth_rgb_poly: Path, e2e_temp_dir: Path) -> None:
         """TC-F01-05: Optimization cleanly terminates and returns finite non-negative metrics."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_dir = e2e_temp_dir / "f01_converge"
         res = run_cli(
@@ -250,8 +246,7 @@ class TestFeature02ModeB:
     def test_f02_01_mode_b_higher_raw_fidelity(self, synth_harmonic: Path, e2e_temp_dir: Path) -> None:
         """TC-F02-01: Fidelity objective prioritizes approximation accuracy."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_dir = e2e_temp_dir / "f02_fidelity"
         res = run_cli(
@@ -282,8 +277,7 @@ class TestFeature02ModeB:
     def test_f02_02_mode_b_dense_basis_expansion(self, synth_harmonic: Path, e2e_temp_dir: Path) -> None:
         """TC-F02-02: Mode B engages dense basis expansions for high-frequency patterns."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_dir = e2e_temp_dir / "f02_dense"
         res = run_cli(
@@ -321,8 +315,7 @@ class TestFeature02ModeB:
     def test_f02_03_mode_b_piecewise_corrections(self, synth_checker: Path, e2e_temp_dir: Path) -> None:
         """TC-F02-03: Local decomposition triggers on high-contrast edges."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_dir = e2e_temp_dir / "f02_piecewise"
         res = run_cli(
@@ -347,15 +340,14 @@ class TestFeature02ModeB:
 
         # Verify that local quadtree decomposition occurred on high-contrast edges
         local_decomp = data.get("local_decomposition") or data.get("local_patches")
-        assert local_decomp is not None, "Local decomposition missing from Mode B project output"
+        assert isinstance(local_decomp, dict), "Local decomposition missing from Mode B project output"
         leaves_count = local_decomp.get("leaves_count", 0) or len(local_decomp.get("patches", []))
         assert leaves_count >= 4, f"Expected quadtree subdivision into >= 4 leaves, got {leaves_count}"
 
     def test_f02_04_mode_b_numerical_conditioning(self, synth_rbf: Path, e2e_temp_dir: Path) -> None:
         """TC-F02-04: Dense expansions monitor and report numerical conditioning."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_dir = e2e_temp_dir / "f02_condition"
         res = run_cli(
@@ -381,14 +373,13 @@ class TestFeature02ModeB:
         # Verify numerical conditioning reporting
         cond_rep = data.get("condition_report") or data.get("global_model", {})
         cond_num = cond_rep.get("condition_number") or data.get("final_metrics", {}).get("condition_number")
-        assert cond_num is not None, "Condition number report missing from Mode B output"
+        assert isinstance(cond_num, (int, float)), "Condition number report missing from Mode B output"
         assert float(cond_num) > 0.0 and math.isfinite(float(cond_num))
 
     def test_f02_05_mode_b_sharp_edge_response(self, synth_typography: Path, e2e_temp_dir: Path) -> None:
         """TC-F02-05: Sharp binary step discontinuities converge without NaN divergence."""
         cli_py = PROJECT_ROOT / "cli.py"
-        if not cli_py.exists():
-            pytest.skip("cli.py is under active parallel development")
+        assert cli_py.exists(), "Required artefact missing: cli_py"
 
         out_dir = e2e_temp_dir / "f02_sharp"
         res = run_cli(
@@ -438,12 +429,9 @@ class TestFeature03Continuous2DCoordinateDomain:
     """Feature 3: Continuous 2D Coordinate Domain mapping (normalized & aspect-preserved)"""
 
     def _get_domain_module(self):
-        try:
-            from mathfield.core.domain import CoordinateDomain2D, DomainMode
+        from mathfield.core.domain import CoordinateDomain2D, DomainMode
 
-            return CoordinateDomain2D, DomainMode
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.domain is under active development in Milestone M2")
+        return CoordinateDomain2D, DomainMode
 
     def test_f03_01_domain_normalized_unit_square(self) -> None:
         """TC-F03-01: Normalized unit square spans [-1, 1] in both X and Y dimensions."""
@@ -508,12 +496,9 @@ class TestFeature04Stage1ImageAnalysis:
     """Feature 4: Stage 1 (Image Analysis) - TV, entropy, 2D FFT spectral roll-off"""
 
     def _get_analyzer_module(self):
-        try:
-            from mathfield.core.image_analysis import ImageAnalysisResult, ImageAnalyzer
+        from mathfield.core.image_analysis import ImageAnalysisResult, ImageAnalyzer
 
-            return ImageAnalyzer, ImageAnalysisResult
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.image_analysis is under active development in Milestone M2")
+        return ImageAnalyzer, ImageAnalysisResult
 
     def test_f04_01_analysis_resolution_aspect(self, synth_landscape: Path) -> None:
         """TC-F04-01: Detects input dimensions and computes aspect ratio."""
@@ -573,16 +558,13 @@ class TestFeature05Stage2GlobalDiscovery:
     """Feature 5: Stage 2 (Global Discovery) - Chebyshev, Fourier, splines, RBFs, rationals"""
 
     def _get_basis_modules(self):
-        try:
-            from mathfield.core.basis.fourier import Fourier2D
-            from mathfield.core.basis.polynomial import Chebyshev2D
-            from mathfield.core.basis.rational import Rational2D
-            from mathfield.core.basis.rbf import WendlandC2RBF
-            from mathfield.core.basis.splines import BSplineSurface2D
+        from mathfield.core.basis.fourier import Fourier2D
+        from mathfield.core.basis.polynomial import Chebyshev2D
+        from mathfield.core.basis.rational import Rational2D
+        from mathfield.core.basis.rbf import WendlandC2RBF
+        from mathfield.core.basis.splines import BSplineSurface2D
 
-            return Chebyshev2D, Fourier2D, BSplineSurface2D, WendlandC2RBF, Rational2D
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.basis is under active development in Milestone M2")
+        return Chebyshev2D, Fourier2D, BSplineSurface2D, WendlandC2RBF, Rational2D
 
     def test_f05_01_global_chebyshev_polynomial(self) -> None:
         """TC-F05-01: Chebyshev orthogonal polynomial basis recovers smooth quadratic profile."""
@@ -667,14 +649,11 @@ class TestFeature06Stage3LocalDecomposition:
     """Feature 6: Stage 3 (Local Decomposition) - Quadtree, Wendland partition of unity"""
 
     def _get_local_modules(self):
-        try:
-            from mathfield.core.local.local_patch import LocalPatch
-            from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
-            from mathfield.core.local.quadtree import QuadtreeDecomposition, QuadtreeNode
+        from mathfield.core.local.local_patch import LocalPatch
+        from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
+        from mathfield.core.local.quadtree import QuadtreeDecomposition, QuadtreeNode
 
-            return QuadtreeDecomposition, QuadtreeNode, WendlandPartitionOfUnity, LocalPatch
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.local is under active development in Milestone M2")
+        return QuadtreeDecomposition, QuadtreeNode, WendlandPartitionOfUnity, LocalPatch
 
     def test_f06_01_local_residual_map_generation(self) -> None:
         """TC-F06-01: Residual map R(x,y) = |I(x,y) - f(x,y)| >= 0 and Sobolev error integration."""
@@ -755,7 +734,7 @@ class TestFeature06Stage3LocalDecomposition:
         # Residual after local patch correction
         res_after = float(np.mean((R[mask] - patch_eval[mask]) ** 2))
         assert res_after < 0.1 * res_before, f"Expected >90% error reduction, before={res_before}, after={res_after}"
-        assert patch.coefficients is not None
+        assert patch.coefficients.size > 0
         assert np.any(np.abs(patch.coefficients) > 1e-4)
 
     def test_f06_05_local_boundary_smoothness(self) -> None:
@@ -804,21 +783,18 @@ class TestFeature07Stage4JointOptimization:
     """Feature 7: Stage 4 (Joint Optimization) - VarPro, LM, L-BFGS-B, seeded genetic"""
 
     def _get_optimize_modules(self):
-        try:
-            from mathfield.core.optimize.conditioning import ConditionMonitor
-            from mathfield.core.optimize.evolutionary import EvolutionaryOptimizer
-            from mathfield.core.optimize.solvers import LBFGSBOptimizer, LevenbergMarquardtOptimizer
-            from mathfield.core.optimize.varpro import VarProOptimizer
+        from mathfield.core.optimize.conditioning import ConditionMonitor
+        from mathfield.core.optimize.evolutionary import EvolutionaryOptimizer
+        from mathfield.core.optimize.solvers import LBFGSBOptimizer, LevenbergMarquardtOptimizer
+        from mathfield.core.optimize.varpro import VarProOptimizer
 
-            return (
-                VarProOptimizer,
-                LevenbergMarquardtOptimizer,
-                LBFGSBOptimizer,
-                EvolutionaryOptimizer,
-                ConditionMonitor,
-            )
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.optimize is under active development in Milestone M2")
+        return (
+            VarProOptimizer,
+            LevenbergMarquardtOptimizer,
+            LBFGSBOptimizer,
+            EvolutionaryOptimizer,
+            ConditionMonitor,
+        )
 
     def test_f07_01_joint_opt_varpro_separable(self) -> None:
         """TC-F07-01: Separable linear parameters solved analytically via Moore-Penrose pseudoinverse."""
@@ -935,14 +911,11 @@ class TestFeature08Stage5RefinementVerification:
     """Feature 8: Stage 5 (Refinement & Verification) - BIC pruning, re-render parity"""
 
     def _get_verify_modules(self):
-        try:
-            from mathfield.core.verify.metrics import compute_metrics
-            from mathfield.core.verify.pruning import BICPruner
-            from mathfield.core.verify.renderer import ReferenceRenderer
+        from mathfield.core.verify.metrics import compute_metrics
+        from mathfield.core.verify.pruning import BICPruner
+        from mathfield.core.verify.renderer import ReferenceRenderer
 
-            return BICPruner, ReferenceRenderer, compute_metrics
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.verify is under active development in Milestone M2")
+        return BICPruner, ReferenceRenderer, compute_metrics
 
     def test_f08_01_refinement_bic_pruning(self) -> None:
         """TC-F08-01: Bayesian Information Criterion (BIC) penalizes redundant parameters."""
@@ -1004,12 +977,9 @@ class TestFeature09FullColourAlphaSupport:
     """Feature 9: Full-Colour & Alpha Support - sRGB, Linear, HSV Cartesian, CIELAB"""
 
     def _get_color_module(self):
-        try:
-            from mathfield.core.color import ColorSpace, ColorSpaceConverter
+        from mathfield.core.color import ColorSpace, ColorSpaceConverter
 
-            return ColorSpaceConverter, ColorSpace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.color is under active development in Milestone M2")
+        return ColorSpaceConverter, ColorSpace
 
     def test_f09_01_color_cartesian_hsv_branchcut(self) -> None:
         """TC-F09-01: Continuous Cartesian HSV (u, v) = (S cos 2pi H, S sin 2pi H) eliminates branch cut jump."""
@@ -1112,7 +1082,7 @@ class TestFeature10SafeExpressionGrammarParser:
         with pytest.raises(ParseError) as exc_info:
             parse("2 * (x + ")
         err = exc_info.value
-        assert hasattr(err, "column")
+        assert isinstance(err.column, int)
         assert err.column >= 0
 
     def test_f10_05_parser_immutable_ast_nodes(self) -> None:
@@ -1274,31 +1244,26 @@ class TestFeature13MultiTierAcceleratedEvaluators:
         X, Y = np.meshgrid(np.linspace(-1, 1, 16), np.linspace(-1, 1, 16))
         ref = evaluate_numpy(ast, X, Y, np.array([]))
 
-        try:
-            from mathfield.core.engine.cpu_native import evaluate_native, is_native_available
+        # Capability-only skip: an import failure is a real regression here.
+        from mathfield.core.engine.cpu_native import evaluate_native, is_native_available
 
-            if is_native_available():
-                native_res = evaluate_native(ast, X, Y, np.array([]))
-                np.testing.assert_allclose(native_res, ref, atol=1e-6)
-            else:
-                pytest.skip("Native C++ DLL not compiled on host; fallback verified")
-        except (ImportError, Exception):
-            pytest.skip("Native C++ DLL bridge under compilation")
+        if not is_native_available():
+            pytest.skip("Native C++ DLL not compiled on host; fallback verified")
+        native_res = evaluate_native(ast, X, Y, np.array([]))
+        np.testing.assert_allclose(native_res, ref, atol=1e-6)
 
     def test_f13_03_evaluator_gpu_cupy_parity(self) -> None:
         """TC-F13-03: CuPy CUDA elementwise kernel parity (or graceful fallback)."""
-        try:
-            from mathfield.core.engine.gpu_cupy import (
-                compute_residuals_cupy,
-                compute_sse_cupy,
-                evaluate_cupy,
-                is_cuda_available,
-            )
+        # Capability-only skip: an import failure is a real regression here.
+        from mathfield.core.engine.gpu_cupy import (
+            compute_residuals_cupy,
+            compute_sse_cupy,
+            evaluate_cupy,
+            is_cuda_available,
+        )
 
-            if not is_cuda_available():
-                pytest.skip("CUDA device not available; automatic CPU fallback applies")
-        except (ImportError, Exception):
-            pytest.skip("CuPy not configured on host; automatic CPU fallback applies")
+        if not is_cuda_available():
+            pytest.skip("CUDA device not available; automatic CPU fallback applies")
 
         from mathfield.core.ast import parse
         from mathfield.core.engine.cpu_numpy import evaluate_numpy
@@ -1435,12 +1400,9 @@ class TestFeature15HighResolution8KTiling:
     """Feature 15: 8K High-Resolution Tiling & Memory Management - Working set < 300MB"""
 
     def _get_tiler_module(self):
-        try:
-            from mathfield.core.engine.tiler import DomainChunker, TileInfo
+        from mathfield.core.engine.tiler import DomainChunker, TileInfo
 
-            return DomainChunker, TileInfo
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.engine.tiler is under active development in Milestone M3")
+        return DomainChunker, TileInfo
 
     def test_f15_01_tiler_partition_coverage(self, mock_8k_metadata: Dict[str, Any]) -> None:
         """TC-F15-01: Spatial domain chunking partitions 8192x8192 into exactly 64 tiles of 1024x1024."""
@@ -1563,13 +1525,10 @@ class TestFeature16BitExactJobCheckpointing:
     """Feature 16: Robust Bit-Exact Job Checkpointing - IEEE-754 hex float serialization"""
 
     def _get_checkpoint_module(self):
-        try:
-            from mathfield.core.checkpoint.manager import CheckpointCorruptError, CheckpointManager
-            from mathfield.core.checkpoint.serializer import CheckpointSerializer
+        from mathfield.core.checkpoint.manager import CheckpointCorruptError, CheckpointManager
+        from mathfield.core.checkpoint.serializer import CheckpointSerializer
 
-            return CheckpointManager, CheckpointCorruptError, CheckpointSerializer
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.checkpoint is under active development in Milestone M3")
+        return CheckpointManager, CheckpointCorruptError, CheckpointSerializer
 
     def test_f16_01_checkpoint_hex_float_exact(self) -> None:
         """TC-F16-01: IEEE-754 hex float serialization round-trips with zero precision loss."""
@@ -1635,12 +1594,9 @@ class TestFeature17MainUIWorkspace:
     """Feature 17: Main UI Workspace - Drag-and-drop, zoom/pan, curtain split comparison"""
 
     def _get_workspace(self):
-        try:
-            from mathfield.ui.workspaces.main_workspace import MainWorkspace
+        from mathfield.ui.workspaces.main_workspace import MainWorkspace
 
-            return MainWorkspace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workspaces.main_workspace is under active development in Milestone M4")
+        return MainWorkspace
 
     def test_f17_01_main_ui_load_image(self, synth_rgb_poly: Path) -> None:
         """TC-F17-01: Viewport source image loading and aspect calculation."""
@@ -1690,12 +1646,9 @@ class TestFeature18EquationUIWorkspace:
     """Feature 18: Equation UI Workspace - Tree view, LaTeX formula card via mathtext"""
 
     def _get_workspace(self):
-        try:
-            from mathfield.ui.workspaces.equation_workspace import EquationWorkspace
+        from mathfield.ui.workspaces.equation_workspace import EquationWorkspace
 
-            return EquationWorkspace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workspaces.equation_workspace is under active development in Milestone M4")
+        return EquationWorkspace
 
     def test_f18_01_equation_ui_tree_population(self) -> None:
         """TC-F18-01: Equation hierarchy tree model structure."""
@@ -1709,7 +1662,7 @@ class TestFeature18EquationUIWorkspace:
         EquationWorkspace = self._get_workspace()
         ws = EquationWorkspace()
         rendered = ws.render_latex_card(r"c_0 \cdot \sin(x) + c_1 \cdot y^2")
-        assert rendered is not None
+        assert isinstance(rendered, bytes) and rendered.startswith(b"\x89PNG")
 
     def test_f18_03_equation_ui_ast_inspector(self) -> None:
         """TC-F18-03: AST inspector extracts node properties and children."""
@@ -1742,12 +1695,9 @@ class TestFeature19RegionAnalysisUIWorkspace:
     """Feature 19: Region Analysis UI Workspace - Rubber-band ROI, 5 full-frame heatmaps"""
 
     def _get_workspace(self):
-        try:
-            from mathfield.ui.workspaces.region_workspace import RegionWorkspace
+        from mathfield.ui.workspaces.region_workspace import RegionWorkspace
 
-            return RegionWorkspace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workspaces.region_workspace is under active development in Milestone M4")
+        return RegionWorkspace
 
     def test_f19_01_region_ui_roi_selection(self) -> None:
         """TC-F19-01: Rubber-band ROI selection bounds validation."""
@@ -1762,7 +1712,7 @@ class TestFeature19RegionAnalysisUIWorkspace:
         RegionWorkspace = self._get_workspace()
         ws = RegionWorkspace()
         res = ws.trigger_local_reoptimization()
-        assert res is not None
+        assert res["status"] == "SUCCESS" and res["roi"] == (-0.5, -0.5, 0.5, 0.5)
 
     def test_f19_03_region_ui_c2_boundary_blend(self) -> None:
         """TC-F19-03: Local re-optimized ROI seamlessly blends with background via Wendland window."""
@@ -1777,7 +1727,7 @@ class TestFeature19RegionAnalysisUIWorkspace:
         ws = RegionWorkspace()
         for metric in ["mse", "ssim", "ciede2000", "abs_diff", "signed_diff"]:
             hm = ws.generate_heatmap(metric)
-            assert hm is not None
+            assert isinstance(hm, np.ndarray) and hm.shape == (64, 64)
 
     def test_f19_05_region_ui_colormap_normalize(self) -> None:
         """TC-F19-05: Colormap dynamic range normalizes error map into [0, 255]."""
@@ -1798,13 +1748,10 @@ class TestFeature20OptimizationUIWorkspace:
     """Feature 20: Optimization UI Workspace - pyqtgraph metric curves, telemetry, controls"""
 
     def _get_workspace(self):
-        try:
-            from mathfield.ui.workers import OptimizationWorker
-            from mathfield.ui.workspaces.optimization_workspace import OptimizationWorkspace
+        from mathfield.ui.workers import OptimizationWorker
+        from mathfield.ui.workspaces.optimization_workspace import OptimizationWorkspace
 
-            return OptimizationWorkspace, OptimizationWorker
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workspaces.optimization_workspace is under active development in Milestone M4")
+        return OptimizationWorkspace, OptimizationWorker
 
     def test_f20_01_opt_ui_metric_curve_updates(self) -> None:
         """TC-F20-01: Real-time metric history curves append points monotonically."""
@@ -1854,12 +1801,9 @@ class TestFeature21ResearchUIWorkspace:
     """Feature 21: Research UI Workspace - Candidate log with rejection rationale, SVD spectra"""
 
     def _get_workspace(self):
-        try:
-            from mathfield.ui.workspaces.research_workspace import ResearchWorkspace
+        from mathfield.ui.workspaces.research_workspace import ResearchWorkspace
 
-            return ResearchWorkspace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workspaces.research_workspace is under active development in Milestone M4")
+        return ResearchWorkspace
 
     def test_f21_01_research_ui_candidate_log(self) -> None:
         """TC-F21-01: Candidate log records expression, delta loss, and status."""
@@ -1917,12 +1861,9 @@ class TestFeature22NonBlockingBackgroundExecution:
     """Feature 22: Non-Blocking Background Execution - Dedicated worker thread & cooperative cancellation"""
 
     def _get_worker_module(self):
-        try:
-            from mathfield.ui.workers import OptimizationWorker, WorkerSignals
+        from mathfield.ui.workers import OptimizationWorker, WorkerSignals
 
-            return OptimizationWorker, WorkerSignals
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui.workers is under active development in Milestone M4")
+        return OptimizationWorker, WorkerSignals
 
     def test_f22_01_worker_thread_isolation(self) -> None:
         """TC-F22-01: Background execution in distinct thread ID."""
@@ -1961,24 +1902,60 @@ class TestFeature22NonBlockingBackgroundExecution:
         )
 
     def test_f22_02_worker_signal_delivery(self) -> None:
-        """TC-F22-02: Cross-thread message queue / signal delivery."""
-        _, WorkerSignals = self._get_worker_module()
+        """TC-F22-02: All declared signals are delivered once per job.
+
+        MathField's signal bus is synchronous: slots run on the emitting
+        (worker) thread. A GUI host must queue widget updates itself.
+        """
+        OptimizationWorker, WorkerSignals = self._get_worker_module()
         signals = WorkerSignals()
-        assert hasattr(signals, "iteration_completed")
+        events: list[tuple] = []
+        delivery_threads: list[int] = []
+        signals.stage_changed.connect(lambda *args: events.append(("stage", args)))
+        signals.progress.connect(lambda value: events.append(("progress", value)))
+        signals.iteration_completed.connect(lambda *args: events.append(("iteration", args)))
+        signals.finished.connect(lambda value: events.append(("finished", value)))
+        signals.finished.connect(lambda *_: delivery_threads.append(threading.get_ident()))
+
+        worker = OptimizationWorker(lambda: 42)
+        worker.signals = signals
+        assert worker.start_job() is True
+        assert worker.wait(2000) is True
+
+        assert [kind for kind, _ in events] == ["stage", "progress", "iteration", "progress", "finished"]
+        assert events[1][1] == 0.0 and events[3][1] == 1.0
+        assert events[-1][1] == 42
+        assert delivery_threads and delivery_threads[0] != threading.get_ident()
 
     def test_f22_03_worker_cancellation_latency(self) -> None:
         """TC-F22-03: Responsive cooperative cancellation (< 500 ms)."""
         OptimizationWorker, _ = self._get_worker_module()
-        worker = OptimizationWorker()
+        started = threading.Event()
+
+        def cooperative_task() -> str:
+            started.set()
+            while not worker._stop_requested:
+                time.sleep(0.001)
+            return "cancelled"
+
+        worker = OptimizationWorker(cooperative_task)
+        assert worker.start_job() is True
+        assert started.wait(timeout=2.0)
         start = time.perf_counter()
         worker.request_cancel()
-        assert time.perf_counter() - start < 0.50
+        assert worker.wait(2000) is True
+        assert (time.perf_counter() - start) < 0.50
+        assert worker._result == "cancelled"
 
     def test_f22_04_worker_exception_safety(self) -> None:
         """TC-F22-04: Exceptions inside worker captured and emitted without process crash."""
         OptimizationWorker, _ = self._get_worker_module()
         worker = OptimizationWorker()
-        assert hasattr(worker, "signals")
+        errors: list[str] = []
+        worker.signals.error.connect(errors.append)
+        assert worker.start_job(lambda: 1 / 0) is True
+        assert worker.wait(2000) is True
+        assert errors and "division by zero" in errors[0]
 
     def test_f22_05_worker_clean_teardown(self) -> None:
         """TC-F22-05: Worker threads terminate cleanly without lingering locks."""
@@ -2004,7 +1981,7 @@ class TestFeature22NonBlockingBackgroundExecution:
         # Verify termination within 1000ms
         if hasattr(worker, "wait"):
             terminated = worker.wait(1000)
-            assert terminated is True or not worker.isRunning(), "Worker thread failed to terminate within 1000ms"
+            assert terminated is True and not worker.isRunning(), "Worker thread failed to terminate within 1000ms"
         elif hasattr(worker, "join"):
             worker.join(timeout=1.0)
             assert not worker.is_alive(), "Worker thread is still alive after stop()"
@@ -2014,7 +1991,7 @@ class TestFeature22NonBlockingBackgroundExecution:
         elif hasattr(worker, "is_alive"):
             assert not worker.is_alive(), "Worker is_alive() must return False after teardown"
 
-        assert getattr(worker, "is_cancelled", True) is True or getattr(worker, "_stop_requested", True) is True
+        assert worker.is_cancelled is True and worker._stop_requested is True
 
 
 # ==============================================================================
@@ -2026,12 +2003,9 @@ class TestFeature23ImageExports:
     """Feature 23: Image Exports - Continuous-res PNG with alpha, quality-controlled JPG"""
 
     def _get_raster_module(self):
-        try:
-            from mathfield.export.raster import export_jpg, export_png
+        from mathfield.export.raster import export_jpg, export_png
 
-            return export_png, export_jpg
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.raster is under active development in Milestone M5")
+        return export_png, export_jpg
 
     def test_f23_01_export_png_alpha_channel(self, e2e_temp_dir: Path) -> None:
         """TC-F23-01: PNG export preserves 4-channel RGBA transparency."""
@@ -2090,12 +2064,9 @@ class TestFeature24DocumentedSVGExport:
     """Feature 24: Documented SVG Export - Dual-mode (analytical vector + metadata XML fallback)"""
 
     def _get_svg_module(self):
-        try:
-            from mathfield.export.svg import export_svg
+        from mathfield.export.svg import export_svg
 
-            return export_svg
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.svg is under active development in Milestone M5")
+        return export_svg
 
     def test_f24_01_export_svg_analytical_vector(self, e2e_temp_dir: Path) -> None:
         """TC-F24-01: Analytical vector mode SVG contains path elements."""
@@ -2153,12 +2124,9 @@ class TestFeature25StandalonePythonReproductionScript:
     """Feature 25: Standalone Python Reproduction Script - Zero MathField dependencies"""
 
     def _get_python_export_module(self):
-        try:
-            from mathfield.export.python_script import export_standalone_script
+        from mathfield.export.python_script import export_standalone_script
 
-            return export_standalone_script
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.python_script is under active development in Milestone M5")
+        return export_standalone_script
 
     def test_f25_01_repro_script_zero_mathfield(self, e2e_temp_dir: Path) -> None:
         """TC-F25-01: Audit confirms ZERO imports of mathfield."""
@@ -2247,13 +2215,10 @@ class TestFeature26StandaloneLaTeXPDFReport:
     """Feature 26: Standalone LaTeX & PDF Report - ReportLab 5.0.1 zero-dependency PDF"""
 
     def _get_latex_pdf_modules(self):
-        try:
-            from mathfield.export.latex_report import export_latex_report
-            from mathfield.export.pdf_report import export_pdf_report
+        from mathfield.export.latex_report import export_latex_report
+        from mathfield.export.pdf_report import export_pdf_report
 
-            return export_latex_report, export_pdf_report
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export latex/pdf reports are under active development in Milestone M5")
+        return export_latex_report, export_pdf_report
 
     def test_f26_01_export_latex_document_syntax(self, e2e_temp_dir: Path) -> None:
         """TC-F26-01: Compilable LaTeX syntax structure."""
@@ -2383,13 +2348,10 @@ class TestFeature27CSVDataJSONProjectFormat:
     """Feature 27: CSV Data & JSON Project Format - Draft-07 validation"""
 
     def _get_project_csv_modules(self):
-        try:
-            from mathfield.export.csv_export import export_csv_parameters
-            from mathfield.export.project_file import ProjectFileError, load_project, save_project
+        from mathfield.export.csv_export import export_csv_parameters
+        from mathfield.export.project_file import ProjectFileError, load_project, save_project
 
-            return export_csv_parameters, save_project, load_project, ProjectFileError
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export csv/project is under active development in Milestone M5")
+        return export_csv_parameters, save_project, load_project, ProjectFileError
 
     def test_f27_01_export_csv_headers_columns(self, e2e_temp_dir: Path) -> None:
         """TC-F27-01: CSV parameter table contains required columns."""
@@ -2447,12 +2409,9 @@ class TestFeature28StandaloneReproducibilityPackageBundle:
     """Feature 28: Standalone Reproducibility Package Bundle - Complete self-contained package"""
 
     def _get_bundle_module(self):
-        try:
-            from mathfield.export.bundle import export_bundle
+        from mathfield.export.bundle import export_bundle
 
-            return export_bundle
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.bundle is under active development in Milestone M5")
+        return export_bundle
 
     def test_f28_01_bundle_manifest_completeness(self, e2e_temp_dir: Path) -> None:
         """TC-F28-01: Bundle contains all required reproducible assets."""
@@ -2585,8 +2544,7 @@ class TestFeature29AutomatedTestSuiteIntegration:
     def test_f29_05_unit_test_headless_ui_run(self) -> None:
         """TC-F29-05: Headless execution passes without display server crashes."""
         ui_test_file = PROJECT_ROOT / "tests" / "test_ui_headless.py"
-        if not ui_test_file.exists():
-            pytest.skip("tests/test_ui_headless.py is under active development in Milestone M4")
+        assert ui_test_file.exists(), "Required artefact missing: ui_test_file"
         try:
             res = subprocess.run(
                 [sys.executable, "-m", "pytest", str(ui_test_file), "--collect-only", "-q"],
@@ -2610,14 +2568,11 @@ class TestFeature30EmpiricalBenchmarkingHarness:
     """Feature 30: Empirical Benchmarking Harness - Performance counters, zero fabricated scores"""
 
     def _get_benchmarks_module(self):
-        try:
-            import benchmarks.ablations as ablations_mod
-            import benchmarks.baselines as baselines_mod
-            import benchmarks.run_benchmarks as run_benchmarks_mod
+        import benchmarks.ablations as ablations_mod
+        import benchmarks.baselines as baselines_mod
+        import benchmarks.run_benchmarks as run_benchmarks_mod
 
-            return baselines_mod, ablations_mod, run_benchmarks_mod
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("benchmarks package is under active development in Milestone M6")
+        return baselines_mod, ablations_mod, run_benchmarks_mod
 
     def test_f30_01_benchmark_baselines_suite(self) -> None:
         """TC-F30-01: 5 baselines defined (Chebyshev, Fourier, wavelets, splines, RBF)."""
@@ -2684,8 +2639,7 @@ class TestFeature31TechnicalPaperDocumentation:
     def test_f31_01_paper_draft_structure(self) -> None:
         """TC-F31-01: Paper draft checks or specifications."""
         paper_path = PROJECT_ROOT / "docs" / "paper" / "mathfield_paper.tex"
-        if not paper_path.exists():
-            pytest.skip("mathfield_paper.tex under active development in parallel documentation track")
+        assert paper_path.exists(), "Required artefact missing: paper_path"
         text = paper_path.read_text(encoding="utf-8")
         assert "\\title" in text
         assert "\\begin{document}" in text
@@ -2693,31 +2647,27 @@ class TestFeature31TechnicalPaperDocumentation:
     def test_f31_02_paper_draft_latex_wellformed(self) -> None:
         """TC-F31-02: Paper draft LaTeX syntax verification."""
         paper_path = PROJECT_ROOT / "docs" / "paper" / "mathfield_paper.tex"
-        if not paper_path.exists():
-            pytest.skip("mathfield_paper.tex under active development in parallel documentation track")
+        assert paper_path.exists(), "Required artefact missing: paper_path"
         info = inspect_latex_doc(paper_path)
         assert info["is_compilable_structure"] is True
 
     def test_f31_03_paper_draft_honesty_check(self) -> None:
         """TC-F31-03: Scientific integrity audit: zero fabricated benchmark claims."""
         paper_path = PROJECT_ROOT / "docs" / "paper" / "mathfield_paper.tex"
-        if not paper_path.exists():
-            pytest.skip("mathfield_paper.tex under active development in parallel documentation track")
+        assert paper_path.exists(), "Required artefact missing: paper_path"
         text = paper_path.read_text(encoding="utf-8")
         assert "[TODO: fake results]" not in text
 
     def test_f31_04_readme_windows_instructions(self) -> None:
         """TC-F31-04: README contains Windows quickstart and developer guide."""
         readme_path = PROJECT_ROOT / "README.md"
-        if not readme_path.exists():
-            pytest.skip("README.md under active development in parallel documentation track")
+        assert readme_path.exists(), "Required artefact missing: readme_path"
         content = readme_path.read_text(encoding="utf-8")
         assert "MathField" in content
 
     def test_f31_05_readme_architecture_diagram(self) -> None:
         """TC-F31-05: Architecture documentation reflects 6 subsystems."""
         readme_path = PROJECT_ROOT / "README.md"
-        if not readme_path.exists():
-            pytest.skip("README.md under active development in parallel documentation track")
+        assert readme_path.exists(), "Required artefact missing: readme_path"
         content = readme_path.read_text(encoding="utf-8")
         assert "Reconstruction" in content

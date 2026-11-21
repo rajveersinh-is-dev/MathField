@@ -2,11 +2,13 @@
 benchmarks/ablations.py
 
 Ablation Studies for MathField Architecture.
-Quantifies the individual contributions of the 4 core mathematical innovations:
-1. no_quadtree: Disables localized quadtree spatial decomposition (pure global model)
-2. no_bic_pruning: Disables BIC complexity regularized pruning (dense unpruned tree)
-3. no_varpro: Disables Variable Projection, using standard joint gradient descent
-4. no_color_decoupling: Disables independent channel basis selection (shared basis across RGB)
+Every configuration key emitted here is consumed by ModeBPipeline, so each
+ablation genuinely changes the reconstruction instead of being a no-op.
+
+1. no_quadtree: Disables localized quadtree spatial decomposition (max_depth=0)
+2. no_bic_pruning: Disables complexity regularization (reg_lambda=0)
+3. no_varpro: Disables condition-aware regularized solve (plain least squares)
+4. no_color_decoupling: Uses one shared basis fit across RGB (no per-channel fit)
 """
 
 from __future__ import annotations
@@ -38,21 +40,25 @@ def list_ablations() -> List[str]:
 def get_ablation_config(ablation_name: str) -> Dict[str, Any]:
     """Retrieve pipeline configuration dictionary for specified ablation."""
     norm = ablation_name.lower()
-    base_config = {
+    base_config: Dict[str, Any] = {
         "global_degree": 4,
+        "fourier_freq": 8,
         "max_depth": 3,
         "split_threshold": 0.02,
-        "lambda_reg": 1e-4,
+        "reg_lambda": 1e-4,
+        "local_basis_type": "dct2",
+        "local_freq": 8,
+        "overlap_ratio": 0.20,
+        "enable_quadtree": True,
         "enable_varpro": True,
         "decouple_color": True,
-        "enable_quadtree": True,
     }
 
     if norm == "no_quadtree":
         base_config["enable_quadtree"] = False
         base_config["max_depth"] = 0
     elif norm == "no_bic_pruning":
-        base_config["lambda_reg"] = 0.0
+        base_config["reg_lambda"] = 0.0
     elif norm == "no_varpro":
         base_config["enable_varpro"] = False
     elif norm == "no_color_decoupling":
@@ -81,9 +87,7 @@ def run_ablation(
     img: np.ndarray,
     **kwargs: Any,
 ) -> AblationResult:
-    """
-    Execute reconstruction with designated architectural ablation disabled.
-    """
+    """Execute reconstruction with designated architectural component disabled."""
     arr = np.asarray(img, dtype=np.float64)
     if arr.size == 0:
         raise ValueError("Cannot run ablation on empty image")

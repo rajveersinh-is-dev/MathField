@@ -93,10 +93,7 @@ class TestTier3PairwiseInteractions:
         TC-F-PAIR-02: F01 (Mode A) x F15 (8K Tiling & Memory Management).
         Mode A discovery executes over 1024x1024 spatial tiles without exceeding 300 MB RAM budget.
         """
-        try:
-            from mathfield.core.engine.tiler import TiledReconstructionManager
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.engine.tiler is under active development in Milestone M3")
+        from mathfield.core.engine.tiler import TiledReconstructionManager
 
         tiler = TiledReconstructionManager(tile_size=1024, max_memory_mb=300)
         tile_grid = tiler.compute_tile_layout(width=2048, height=2048)
@@ -107,10 +104,7 @@ class TestTier3PairwiseInteractions:
         TC-F-PAIR-03: F01 (Mode A) x F16 (Robust Bit-Exact Job Checkpointing).
         Paused Mode A discovery resumed from serialized .mfchk produces bit-exact parameter parity.
         """
-        try:
-            from mathfield.core.checkpoint import CheckpointManager
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.checkpoint is under active development in Milestone M3")
+        from mathfield.core.checkpoint import CheckpointManager
 
         mgr = CheckpointManager()
         state = mgr.load(sample_checkpoint_file)
@@ -173,7 +167,6 @@ class TestTier3PairwiseInteractions:
         status = pipe.execute(ctx)
 
         assert status == StageStatus.COMPLETED
-        assert ctx.local_decomposition is not None
         assert "patches" in ctx.local_decomposition
         assert len(ctx.local_decomposition["patches"]) >= 1
         assert ctx.metrics["mse"] < 0.05
@@ -238,10 +231,7 @@ class TestTier3PairwiseInteractions:
         TC-F-PAIR-08: F02 (Mode B) x F26 (LaTeX & PDF Report).
         Mode B dense basis parameters and quadtree decomposition diagram exported to PDF report.
         """
-        try:
-            from mathfield.export.pdf_report import export_pdf_report
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.pdf_report is under active development in Milestone M5")
+        from mathfield.export.pdf_report import export_pdf_report
 
         pdf_path = e2e_temp_dir / "mode_b_report.pdf"
         dummy_result = {
@@ -289,10 +279,7 @@ class TestTier3PairwiseInteractions:
         TC-F-PAIR-10: F03 (Continuous Domain) x F24 (Documented SVG Export).
         SVG export viewBox matches anisotropic continuous domain aspect ratio.
         """
-        try:
-            from mathfield.export.svg import export_svg
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.svg is under active development in Milestone M5")
+        from mathfield.export.svg import export_svg
 
         svg_path = e2e_temp_dir / "anisotropic.svg"
         model = {
@@ -422,23 +409,17 @@ class TestTier3PairwiseInteractions:
         TC-F-PAIR-15: F06 (Local Decomposition) x F15 (8K Tiling).
         Quadtree local decomposition maps node bounding boxes seamlessly across tile boundaries.
         """
-        try:
-            from mathfield.core.engine.tiler import TiledReconstructionManager
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.core.engine.tiler is under active development in Milestone M3")
+        from mathfield.core.engine.tiler import TiledReconstructionManager
 
         tiler = TiledReconstructionManager(tile_size=1024)
-        assert tiler is not None
+        assert tiler.tile_size == 1024
 
     def test_pair_16_local_patches_json_roundtrip(self, sample_mathfield_project: Path, e2e_temp_dir: Path) -> None:
         """
         TC-F-PAIR-16: F06 (Local Decomposition) x F27 (JSON Project Format).
         Save and reload project file preserves quadtree local patch parameters losslessly.
         """
-        try:
-            from mathfield.export.project_file import load_project, save_project
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.project_file is under active development in Milestone M5")
+        from mathfield.export.project_file import load_project, save_project
 
         orig = load_project(sample_mathfield_project)
         clone_path = e2e_temp_dir / "clone_local.mathfield"
@@ -489,8 +470,7 @@ class TestTier3PairwiseInteractions:
         # Run minimal controller execution with callback attached
         img = np.zeros((16, 16, 3), dtype=np.uint8)
         ctx = ctrl.start(img, mode="fidelity", config={"max_depth": 1, "degree": 1}, on_candidate=on_candidate)
-        assert ctx is not None
-        assert ctx.metrics is not None
+        assert 0.0 <= float(ctx.metrics["mse"]) < 1.0
 
     def test_pair_19_bic_pruning_csv_table_consistency(self, e2e_temp_dir: Path) -> None:
         """
@@ -521,10 +501,7 @@ class TestTier3PairwiseInteractions:
         assert len(res.retained_indices) <= 4
         assert res.final_bic < 1e6
 
-        try:
-            from mathfield.export.csv_export import export_csv_parameters
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.csv_export is under active development in Milestone M5")
+        from mathfield.export.csv_export import export_csv_parameters
 
         csv_path = e2e_temp_dir / "pruned_params.csv"
         params_dict = {f"c{idx}": {"value": float(res.coefficients[idx])} for idx in res.retained_indices}
@@ -537,10 +514,7 @@ class TestTier3PairwiseInteractions:
         TC-F-PAIR-20: F08 (Refinement & Verification) x F28 (Reproducibility Bundle).
         Independent re-renderer calculates verification metrics checked by bundle verify.py.
         """
-        try:
-            from mathfield.export.bundle import export_bundle
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.bundle is under active development in Milestone M5")
+        from mathfield.export.bundle import export_bundle
 
         bundle_dir = e2e_temp_dir / "test_bundle"
         sample_result = {
@@ -557,10 +531,7 @@ class TestTier3PairwiseInteractions:
         TC-F-PAIR-21: F09 (Color & Alpha) x F23 (Image Exports PNG & JPG).
         Continuous 4-channel RGBA reconstruction exported to PNG preserves smooth alpha values.
         """
-        try:
-            from mathfield.export.raster import export_png
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.raster is under active development in Milestone M5")
+        from mathfield.export.raster import export_png
 
         png_path = e2e_temp_dir / "alpha_export.png"
         sample_model = {
@@ -577,10 +548,7 @@ class TestTier3PairwiseInteractions:
         TC-F-PAIR-22: F09 (Color & Alpha) x F25 (Standalone Python Reproduction Script).
         Standalone reproduction script includes pure NumPy color space conversions without external libraries.
         """
-        try:
-            from mathfield.export.python_script import export_standalone_script
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.export.python_script is under active development in Milestone M5")
+        from mathfield.export.python_script import export_standalone_script
 
         script_path = e2e_temp_dir / "color_repro.py"
         sample_model = {"color_space": "CIELAB", "expressions": {"L": "50", "a": "x * 20", "b": "y * 20"}}
@@ -698,67 +666,58 @@ class TestTier3PairwiseInteractions:
         TC-F-PAIR-27: F15 (8K High-Resolution Tiling) x F16 (Robust Bit-Exact Checkpointing).
         Tiled 8K reconstruction interrupted mid-canvas and resumed from checkpoint without seam artifacts.
         """
-        try:
-            from mathfield.core.checkpoint import CheckpointManager
-            from mathfield.core.engine.tiler import TiledReconstructionManager
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("Tiling and Checkpointing modules are under active development in Milestone M3")
+        from mathfield.core.checkpoint import CheckpointManager
+        from mathfield.core.engine.tiler import TiledReconstructionManager
 
         tiler = TiledReconstructionManager(tile_size=1024)
         chk = CheckpointManager()
-        assert tiler is not None
-        assert chk is not None
+        assert tiler.tile_size == 1024
+        assert chk.max_history == 5 and chk.default_extension == ".mfchk"
 
     def test_pair_28_main_ui_worker_thread_isolation(self) -> None:
         """
         TC-F-PAIR-28: F17 (Main UI Workspace) x F22 (Non-Blocking Background Execution).
         Background optimization execution operates in decoupled worker without blocking main thread.
         """
-        try:
-            from mathfield.ui.workers import OptimizationWorker
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui is under active development in Milestone M4")
+        from mathfield.ui.workers import OptimizationWorker
 
         worker = OptimizationWorker()
-        assert worker is not None
+        assert worker.is_busy is False and worker.task is None
 
     def test_pair_29_equation_ui_live_parameter_stream(self) -> None:
         """
         TC-F-PAIR-29: F18 (Equation UI Workspace) x F20 (Optimization UI Workspace).
         Live parameter streams from optimization workspace update equation formula previews with debouncing.
         """
-        try:
-            from mathfield.ui.equation_workspace import EquationWorkspace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui is under active development in Milestone M4")
+        from mathfield.ui.equation_workspace import EquationWorkspace
 
         ws = EquationWorkspace()
-        assert ws is not None
+        ws.debounce_parameter_events([0.1, 0.2, 0.9])
+        assert ws.last_dispatched_value == 0.9
+        ws.set_parameter_value("c0", 2.0)
+        assert ws.get_parameter_value("c0") == 2.0
 
     def test_pair_30_region_analysis_local_reoptimization(self) -> None:
         """
         TC-F-PAIR-30: F19 (Region Analysis UI Workspace) x F06 (Local Decomposition).
         Subregion bounding box selection in Region Analysis triggers localized quadtree re-optimization.
         """
-        try:
-            from mathfield.ui.region_workspace import RegionAnalysisWorkspace
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("mathfield.ui is under active development in Milestone M4")
+        from mathfield.ui.region_workspace import RegionAnalysisWorkspace
 
         ws = RegionAnalysisWorkspace()
-        assert ws is not None
+        ws.set_roi_selection(-0.25, -0.25, 0.25, 0.25)
+        result = ws.trigger_local_reoptimization()
+        assert result["status"] == "SUCCESS"
+        assert result["roi"] == (-0.25, -0.25, 0.25, 0.25)
 
     def test_pair_31_bundle_benchmark_harness_integration(self, e2e_temp_dir: Path) -> None:
         """
         TC-F-PAIR-31: F28 (Reproducibility Bundle) x F30 (Empirical Benchmarking Harness).
         Reproducibility package bundle generated from benchmark run validates timing counters and metrics.
         """
-        try:
-            from benchmarks.run_benchmarks import BenchmarkRunner
-            from mathfield.export.bundle import export_bundle
-        except (ImportError, ModuleNotFoundError):
-            pytest.skip("benchmarks and bundle export are under active development in Milestones M5/M6")
+        from benchmarks.run_benchmarks import BenchmarkRunner
+        from mathfield.export.bundle import export_bundle
 
         runner = BenchmarkRunner()
-        assert runner is not None
-        assert export_bundle is not None
+        assert callable(runner.measure_function)
+        assert callable(export_bundle)

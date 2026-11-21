@@ -51,11 +51,15 @@ class MainWorkspace:
                 if not p.exists():
                     self._status_text = f"File not found: {p}"
                     return False
-                img = Image.open(p)
-                w, h = img.size
-                arr = np.array(img.convert("RGB"))
+                with Image.open(p) as img:
+                    w, h = img.size
+                    arr = np.array(img.convert("RGB"), copy=True)
             elif isinstance(path_or_array, np.ndarray):
-                arr = path_or_array
+                source = np.asarray(path_or_array)
+                if source.ndim != 3 or source.shape[2] not in (3, 4):
+                    self._status_text = "Unsupported image format"
+                    return False
+                arr = source.copy()
                 h, w = arr.shape[:2]
             else:
                 self._status_text = "Unsupported image format"

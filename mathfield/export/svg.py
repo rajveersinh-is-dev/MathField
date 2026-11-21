@@ -10,9 +10,13 @@ import base64
 import io
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, List, Union
+
+import numpy as np
 
 from mathfield.export.raster import _model_to_image
+
+ET.register_namespace("xlink", "http://www.w3.org/1999/xlink")
 
 
 def export_svg(
@@ -20,14 +24,15 @@ def export_svg(
     output_path: Union[str, Path],
     width: int = 100,
     height: int = 100,
-    mode: str = "vector",
+    mode: str = "raster_fallback",
     embed_metadata: bool = True,
 ) -> None:
     """
     Export mathematical reconstruction to SVG.
     Supports:
-    - mode="vector": Generates analytical SVG path/polygon vector geometry
-    - mode="raster_fallback": Encodes raster evaluation into base64 <image>
+    - mode="raster_fallback": Encodes the actual reconstruction into a base64 <image>
+    - mode="vector": Embeds the reconstruction plus real iso-contour paths derived
+      from its luminance field (no decorative placeholder geometry)
     - embed_metadata: Inserts mathematical formula metadata into <metadata> or <desc>
     """
     out_p = Path(output_path)
@@ -70,64 +75,49 @@ def export_svg(
         desc_elem = ET.SubElement(metadata_elem, "desc")
         desc_elem.text = f"MathField Discovered Equations: {eq_text}"
 
-    if mode == "raster_fallback":
-        # Render image to PNG buffer and encode to base64
-        img = _model_to_image(model, width=w, height=h)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        b64_data = base64.b64encode(buf.getvalue()).decode("ascii")
+    # Both modes embed the genuine reconstruction; vector mode additionally
+    # derives contour paths from it instead of drawing decorative curves.
+    img = _model_to_image(model, width=w, height=h)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    b64_data = base64.b64encode(buf.getvalue()).decode("ascii")
+    href = f"data:image/png;base64,{b64_data}"
+    ET.SubElement(
+        svg_elem,
+        "image",
+        attrib={
+            "width": str(w),
+            "height": str(h),
+            "href": href,
+            "{http://www.w3.org/1999/xlink}href": href,
+        },
+    )
 
-        ET.SubElement(
-            svg_elem,
-            "image",
-            attrib={
-                "width": str(w),
-                "height": str(h),
-                "href": f"data:image/png;base64,{b64_data}",
-            },
-        )
-    else:
-        # Analytical vector mode: generate vector paths and polygons
-        # Create background and vector contour/grid representation
-        ET.SubElement(
-            svg_elem,
-            "rect",
-            attrib={
-                "x": "0",
-                "y": "0",
-                "width": str(w),
-                "height": str(h),
-                "fill": "#0a0e14",
-            },
-        )
-
-        # Generate sample mathematical vector geometry (isolines / paths)
-        num_isolines = 8
-        for i in range(num_isolines):
-            y_pos = int((i + 1) * h / (num_isolines + 1))
-            path_d = f"M 0 {y_pos} Q {w // 2} {y_pos + 10 * (-1) ** i} {w} {y_pos}"
-            ET.SubElement(
-                svg_elem,
-                "path",
-                attrib={
-                    "d": path_d,
-                    "stroke": f"rgb({(i * 30) % 256}, {((i + 2) * 35) % 256}, 220)",
-                    "stroke-width": "1.5",
-                    "fill": "none",
-                },
-            )
-
-        # Vector polygon element
-        pts = f"0,0 {w // 4},{h // 8} {w // 2},0 {w * 3 // 4},{h // 8} {w},0 {w},{h // 4} 0,{h // 4}"
-        ET.SubElement(
-            svg_elem,
-            "polygon",
-            attrib={
-                "points": pts,
-                "fill": "rgba(40, 120, 240, 0.15)",
-                "stroke": "none",
-            },
-        )
+    if mode == "vector":
+        sample = np.asarray(img.convert("L").resize((min(w, 96), min(h, 96))), dtype=np.float64) / 255.0
+        sh, sw = sample.shape
+        for level_idx, level in enumerate(np.linspace(0.15, 0.85, 8)):
+            segments: List[str] = []
+            for row in range(sh - 1):
+                for col in range(sw - 1):
+                    corners = (sample[row, col], sample[row, col + 1], sample[row + 1, col + 1], sample[row + 1, col])
+                    if min(corners) <= level < max(corners):
+                        x0 = col * w / sw
+                        x1 = (col + 1) * w / sw
+                        yy = (row + 0.5) * h / sh
+                        segments.append(f"M {x0:.2f} {yy:.2f} L {x1:.2f} {yy:.2f}")
+            if segments:
+                ET.SubElement(
+                    svg_elem,
+                    "path",
+                    attrib={
+                        "d": " ".join(segments),
+                        "stroke": f"rgb({(level_idx * 30) % 256}, {((level_idx + 2) * 35) % 256}, 220)",
+                        "stroke-width": "0.8",
+                        "fill": "none",
+                        "opacity": "0.75",
+                    },
+                )
 
     # Write well-formed XML
     tree = ET.ElementTree(svg_elem)

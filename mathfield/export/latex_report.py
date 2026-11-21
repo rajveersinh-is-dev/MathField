@@ -9,11 +9,20 @@ partition of unity equations, local patch catalogs, and booktabs verification ta
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
 from mathfield.core.ast.parser import parse
 from mathfield.core.codegen.latex import to_latex
+
+
+def _human_equation_to_latex(equation: str) -> str:
+    """Convert a human-readable discovered equation into AMS-LaTeX math."""
+    text = str(equation).replace("π", r"\pi").replace("·", r" \cdot ")
+    text = re.sub(r"T_(\d+)", r"T_{\1}", text)
+    text = re.sub(r"\[(\d+) (?:total )?terms\]", r"\ [\1\ terms]", text)
+    return text.replace("&", r"\&").replace("%", r"\%").replace("$", r"\$")
 
 
 def export_latex_report(
@@ -55,8 +64,8 @@ def export_latex_report(
     global_blocks: List[str] = []
     if global_eqs:
         for ch, eq_str in global_eqs.items():
-            clean_eq = eq_str.replace("·", " \\cdot ").replace("_", "\\_")
-            global_blocks.append(f"\\begin{{equation}}\n  G_{{{ch}}}(x, y) = \\text{{{clean_eq}}}\n\\end{{equation}}")
+            clean_eq = _human_equation_to_latex(eq_str)
+            global_blocks.append(f"\\begin{{equation}}\n  G_{{{ch}}}(x, y) = {clean_eq}\n\\end{{equation}}")
     elif expressions:
         for ch, expr in expressions.items():
             if isinstance(expr, str) and expr.strip():
@@ -129,6 +138,8 @@ def export_latex_report(
 
     doc_str = (
         "\\documentclass[11pt,a4paper]{article}\n"
+        "\\usepackage[utf8]{inputenc}\n"
+        "\\usepackage[T1]{fontenc}\n"
         "\\usepackage{amsmath,amssymb,amsfonts}\n"
         "\\usepackage{booktabs}\n"
         "\\usepackage{geometry}\n"

@@ -80,7 +80,10 @@ def protected_pow(u: np.ndarray, v: np.ndarray, eps: float = 1e-15) -> np.ndarra
     # An exponent is effectively an odd integer if it is close to round(v) and round(v) % 2 != 0
     v_round = np.round(v_clamped)
     is_finite = np.isfinite(v_clamped)
-    is_integer = is_finite & np.isclose(v_clamped, v_round, atol=1e-7)
+    # Use an absolute tolerance with *zero* relative tolerance so the vector
+    # backend makes exactly the same integer-parity decision as the scalar
+    # reference in safe_scalar_pow (math.isclose default rel_tol is 1e-9).
+    is_integer = is_finite & np.isclose(v_clamped, v_round, atol=1e-7, rtol=0.0)
     v_safe_int = np.nan_to_num(v_round, nan=0.0).astype(np.int64)
     is_odd_int = is_integer & (np.mod(np.abs(v_safe_int), 2) == 1)
 
@@ -225,7 +228,7 @@ def safe_scalar_pow(u: float, v: float, eps: float = 1e-15) -> float:
     v_clamped = max(-80.0, min(80.0, v))
     abs_u = max(abs(u), eps)
     v_round = round(v_clamped)
-    is_odd_int = math.isclose(v_clamped, v_round, abs_tol=1e-7) and (int(abs(v_round)) % 2 == 1)
+    is_odd_int = math.isclose(v_clamped, v_round, abs_tol=1e-7, rel_tol=0.0) and (int(abs(v_round)) % 2 == 1)
     sign = -1.0 if (u < 0.0 and is_odd_int) else 1.0
     exponent = max(-80.0, min(80.0, v_clamped * math.log(abs_u)))
     return sign * math.exp(exponent)

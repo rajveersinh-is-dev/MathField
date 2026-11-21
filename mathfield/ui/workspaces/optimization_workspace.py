@@ -32,7 +32,9 @@ class OptimizationWorkspace:
         self._status = "PAUSED"
 
     def resume(self) -> None:
-        """Resume paused optimization loop."""
+        """Resume paused optimization loop (no-op after cancel or divergence)."""
+        if self.is_cancelled or self.has_diverged:
+            return
         self.is_paused = False
         self._status = "RUNNING"
 
@@ -67,7 +69,7 @@ class OptimizationWorkspace:
         res: Dict[str, List[float]] = {}
         for k, vals in self._curves.items():
             if len(vals) > 1000:
-                stride = len(vals) // 1000
+                stride = math.ceil(len(vals) / 1000)
                 res[k] = vals[::stride]
             else:
                 res[k] = list(vals)

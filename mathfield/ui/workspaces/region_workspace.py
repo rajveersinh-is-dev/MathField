@@ -56,14 +56,27 @@ class RegionWorkspace:
         return self._roi_valid
 
     def trigger_local_reoptimization(self) -> Dict[str, Any]:
-        """Trigger local basis re-optimization over the current ROI subdomain."""
+        """Prepare a local patch for the current ROI subdomain.
+
+        The heavy numerical fit is performed by ReconstructionController; this
+        workspace only prepares the ROI configuration, so no iteration count or
+        MSE improvement is fabricated here.
+        """
+        if not self.is_roi_valid():
+            return {
+                "status": "INVALID_ROI",
+                "roi": self._roi,
+                "patch": None,
+                "iterations": 0,
+                "delta_mse": 0.0,
+            }
         patch = LocalPatch(bounds=self._roi)
         return {
             "status": "SUCCESS",
             "roi": self._roi,
             "patch": patch,
-            "iterations": 1,
-            "delta_mse": -0.01,
+            "iterations": 0,
+            "delta_mse": 0.0,
         }
 
     def blend_subdomain_patch(

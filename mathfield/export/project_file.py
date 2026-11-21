@@ -83,10 +83,13 @@ def save_project(
     if not out_p.parent.exists():
         raise FileNotFoundError(f"Destination directory does not exist: {out_p.parent}")
 
-    # Validate before saving
-    validate_project_dict(project_data)
+    # Work on a shallow copy so validation-derived metrics never mutate the caller.
+    payload = dict(project_data)
+    if isinstance(project_data.get("final_metrics"), dict):
+        payload["final_metrics"] = dict(project_data["final_metrics"])
+    validate_project_dict(payload)
 
-    content = json.dumps(project_data, default=_json_fallback, indent=2, ensure_ascii=False)
+    content = json.dumps(payload, default=_json_fallback, indent=2, ensure_ascii=False)
     out_p.write_text(content, encoding="utf-8")
 
 

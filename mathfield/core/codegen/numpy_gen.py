@@ -32,6 +32,14 @@ def to_python_code(node: ASTNode) -> str:
     return _node_to_numpy_expr(node)
 
 
+def _flatten_additive(node: ASTNode, sign: int = 1) -> list[tuple[int, ASTNode]]:
+    """Return the signed leaf terms of an associative +/- chain."""
+    if isinstance(node, BinaryOpNode) and node.op in ("+", "-"):
+        right_sign = sign if node.op == "+" else -sign
+        return _flatten_additive(node.left, sign) + _flatten_additive(node.right, right_sign)
+    return [(sign, node)]
+
+
 def _node_to_numpy_expr(node: ASTNode) -> str:
     if isinstance(node, ConstantNode):
         if node.symbol == "pi":
@@ -62,10 +70,19 @@ def _node_to_numpy_expr(node: ASTNode) -> str:
         r_str = _node_to_numpy_expr(node.right)
         op = node.op
 
-        if op == "+":
-            return f"({l_str} + {r_str})"
-        elif op == "-":
-            return f"({l_str} - {r_str})"
+        if op in ("+", "-"):
+            # Flatten associative +/- chains. A coefficient expansion can have
+            # thousands of terms; recursively parenthesising them exceeds
+            # Python's nested-parenthesis limit when the script is compiled.
+            terms = _flatten_additive(node)
+            parts = [
+                (sign, _node_to_numpy_expr(child))
+                for sign, child in terms
+            ]
+            expression = f"({parts[0][1]})"
+            for sign, part in parts[1:]:
+                expression += f" {'+ ' if sign > 0 else '- '}({part})"
+            return f"({expression})"
         elif op == "*":
             return f"({l_str} * {r_str})"
         elif op == "/":

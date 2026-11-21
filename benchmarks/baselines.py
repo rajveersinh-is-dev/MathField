@@ -37,7 +37,11 @@ def list_baselines() -> List[str]:
 
 @dataclass(frozen=True, slots=True)
 class BaselineResult:
-    """Quantitative performance measurement for an empirical baseline model."""
+    """Quantitative performance measurement for an empirical baseline model.
+
+    num_parameters is the *total* number of fitted coefficients across all
+    colour channels, derived from the actual representation used by the fit.
+    """
 
     name: str
     mse: float
@@ -77,7 +81,7 @@ def run_baseline(
         deg = int(kwargs.get("degree", degree))
         basis = Chebyshev2D(deg_x=deg, deg_y=deg, truncation="total_degree")
         Phi = basis.basis_matrix(X, Y)
-        n_params = Phi.shape[1]
+        n_params_per_channel = Phi.shape[1]
 
         recon_channels = []
         for ch in range(c):
@@ -85,13 +89,14 @@ def run_baseline(
             coeffs, _, _, _ = np.linalg.lstsq(Phi, y_ch, rcond=1e-10)
             recon_channels.append((Phi @ coeffs).reshape(h, w))
 
+        n_params = n_params_per_channel * c
         recon = np.stack(recon_channels, axis=-1) if c > 1 else recon_channels[0]
 
     elif norm_name == "fourier":
         f = int(kwargs.get("freq", freq))
         basis = Fourier2D(freq_x=f, freq_y=f, truncation="rectangular")
         Phi = basis.basis_matrix(X, Y)
-        n_params = Phi.shape[1]
+        n_params_per_channel = Phi.shape[1]
 
         recon_channels = []
         for ch in range(c):
@@ -99,6 +104,7 @@ def run_baseline(
             coeffs, _, _, _ = np.linalg.lstsq(Phi, y_ch, rcond=1e-10)
             recon_channels.append((Phi @ coeffs).reshape(h, w))
 
+        n_params = n_params_per_channel * c
         recon = np.stack(recon_channels, axis=-1) if c > 1 else recon_channels[0]
 
     elif norm_name == "wavelets":
@@ -107,7 +113,6 @@ def run_baseline(
         # Block-averaged Haar reconstruction
         block_size = max(2, min(h, w) // (2**n_levels))
         recon_channels = []
-        n_params = 0
         for ch in range(c):
             y_ch = arr[:, :, ch] if c > 1 else arr
             down_h = h // block_size
@@ -119,19 +124,16 @@ def run_baseline(
             full_recon = np.zeros((h, w), dtype=np.float64)
             full_recon[: up.shape[0], : up.shape[1]] = up
             recon_channels.append(full_recon)
-            n_params = down_h * down_w
 
+        n_params = down_h * down_w * c
         recon = np.stack(recon_channels, axis=-1) if c > 1 else recon_channels[0]
 
     elif norm_name == "splines":
         # Piecewise bicubic polynomial spline
         from scipy.interpolate import RectBivariateSpline
 
-        x_knots = np.linspace(-1.0, 1.0, max(4, w // 4))
-        y_knots = np.linspace(-1.0, 1.0, max(4, h // 4))
-        n_params = len(x_knots) * len(y_knots)
-
         recon_channels = []
+        fitted_coefficients = 0
         for ch in range(c):
             y_ch = arr[:, :, ch] if c > 1 else arr
             spline = RectBivariateSpline(
@@ -142,8 +144,10 @@ def run_baseline(
                 ky=3,
                 s=0.01,
             )
+            fitted_coefficients += int(spline.get_coeffs().size)
             recon_channels.append(spline(np.linspace(-1.0, 1.0, h), np.linspace(-1.0, 1.0, w)))
 
+        n_params = fitted_coefficients
         recon = np.stack(recon_channels, axis=-1) if c > 1 else recon_channels[0]
 
     elif norm_name == "rbf":
@@ -163,7 +167,7 @@ def run_baseline(
         dy = Y_flat[:, np.newaxis] - centers_y[np.newaxis, :]
         dist_sq = dx * dx + dy * dy
         Phi = np.exp(-dist_sq / (2.0 * sigma * sigma))
-        n_params = Phi.shape[1]
+        n_params_per_channel = Phi.shape[1]
 
         recon_channels = []
         for ch in range(c):
@@ -171,6 +175,7 @@ def run_baseline(
             coeffs, _, _, _ = np.linalg.lstsq(Phi, y_ch, rcond=1e-10)
             recon_channels.append((Phi @ coeffs).reshape(h, w))
 
+        n_params = n_params_per_channel * c
         recon = np.stack(recon_channels, axis=-1) if c > 1 else recon_channels[0]
 
     else:

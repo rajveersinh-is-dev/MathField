@@ -9,6 +9,7 @@ parameter convergence trajectories, SVD singular value spectrum monitoring, and 
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -100,9 +101,16 @@ class ResearchWorkspace:
         return self._condition_number
 
     def export_research_log(self, path: Union[str, Path], format: str = "csv") -> None:
-        """Export candidate log to CSV file with required schema."""
+        """Export candidate log to CSV or JSON with the required schema."""
+        fmt = format.lower()
+        if fmt not in ("csv", "json"):
+            raise ValueError(f"Unsupported research log format: {format}")
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
+
+        if fmt == "json":
+            p.write_text(json.dumps(list(self._candidate_log), indent=2), encoding="utf-8")
+            return
 
         with open(p, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
