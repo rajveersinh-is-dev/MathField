@@ -182,7 +182,7 @@ class ConstantNode(ASTNode):
             return self.symbol
         if self.value.is_integer():
             return f"{int(self.value)}"
-        return f"{self.value:g}"
+        return repr(self.value)
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import runpy
 import subprocess
 import sys
 import zipfile
@@ -37,6 +39,12 @@ def test_svg_embeds_real_reconstruction(tmp_path: Path) -> None:
     text = out.read_text(encoding="utf-8")
     assert "data:image/png;base64," in text
     assert "#0a0e14" not in text  # old decorative background removed
+
+
+def test_raster_prefers_channel_equations_over_formula_metadata() -> None:
+    model = {"expressions": {"formula": "1", "R": "0.1", "G": "0.5", "B": "0.9"}}
+    pixels = np.asarray(_model_to_image(model, width=2, height=2))
+    np.testing.assert_array_equal(pixels[0, 0], [25, 127, 229])
 
 
 def test_bundle_zip_is_deterministic(tmp_path: Path) -> None:
@@ -94,6 +102,50 @@ def test_cli_exports_real_expressions_and_patch_bounds(tmp_path: Path) -> None:
     for patch in project["local_patches"]:
         assert len(patch["bounds"]) == 4
         assert all(isinstance(value, float) for value in patch["bounds"])
+
+
+def test_cli_mode_a_bundle_reproduces_fitted_rgb_channels(tmp_path: Path) -> None:
+    height, width = 12, 16
+    yy, xx = np.mgrid[0:height, 0:width] / np.array([height - 1, width - 1])[:, None, None]
+    rgb = np.stack([0.1 + 0.7 * xx, 0.8 - 0.5 * yy, 0.2 + 0.6 * xx * yy], axis=-1)
+    image = tmp_path / "mode_a_rgb.png"
+    Image.fromarray((rgb * 255.0).astype(np.uint8)).save(image)
+    out = tmp_path / "mode_a_rgb"
+
+    assert cli_main(["-i", str(image), "-o", str(out), "-m", "discovery", "--max-iter", "1", "--export-png", "--export-bundle", "-q"]) == 0
+
+    project = json.loads((out / "mathfield_out.mathfield").read_text(encoding="utf-8"))
+    channels = project["global_model"]["channels"]
+    assert [channel["channel"] for channel in channels] == ["R", "G", "B"]
+    assert len({channel["formula"] for channel in channels}) == 3
+    assert all(channel["parameters"] for channel in channels)
+
+    namespace = runpy.run_path(str(out / "bundle" / "reproduce.py"))
+    reproduced = np.asarray(namespace["reconstruct"](width, height))
+    delivered = np.asarray(Image.open(out / "reconstruction.png"))
+    np.testing.assert_array_equal(reproduced, delivered)
+
+
+def test_cli_mode_a_bundle_preserves_rgba_channels(tmp_path: Path) -> None:
+    height, width = 10, 14
+    yy, xx = np.mgrid[0:height, 0:width] / np.array([height - 1, width - 1])[:, None, None]
+    rgba = np.stack([0.1 + 0.7 * xx, 0.8 - 0.5 * yy, 0.2 + 0.6 * xx * yy, 0.3 + 0.4 * xx], axis=-1)
+    image = tmp_path / "mode_a_rgba.png"
+    Image.fromarray((rgba * 255.0).astype(np.uint8)).save(image)
+    out = tmp_path / "mode_a_rgba"
+
+    assert cli_main(["-i", str(image), "-o", str(out), "-m", "discovery", "--max-iter", "1", "--export-png", "--export-bundle", "-q"]) == 0
+
+    project = json.loads((out / "mathfield_out.mathfield").read_text(encoding="utf-8"))
+    channels = project["global_model"]["channels"]
+    assert [channel["channel"] for channel in channels] == ["R", "G", "B", "A"]
+    assert channels[-1]["formula"] != "1"
+
+    namespace = runpy.run_path(str(out / "bundle" / "reproduce.py"))
+    reproduced = np.asarray(namespace["reconstruct"](width, height))
+    delivered = np.asarray(Image.open(out / "reconstruction.png"))
+    assert reproduced.shape == (height, width, 4)
+    np.testing.assert_array_equal(reproduced, delivered)
 
 
 def test_ablation_flags_change_the_pipeline_configuration() -> None:

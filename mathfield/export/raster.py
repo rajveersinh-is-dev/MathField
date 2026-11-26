@@ -156,7 +156,7 @@ def _model_to_image(
         rgba = np.stack([to_uint8(R), to_uint8(G), to_uint8(B), to_uint8(A)], axis=-1)
         return Image.fromarray(rgba, mode="RGBA")
     else:
-        if "formula" in expressions:
+        if "formula" in expressions and not any(key in expressions for key in ("R", "G", "B")):
             f_val = _eval_expr(expressions["formula"], allow_label=True)
             scaled = np.clip((f_val + 1.0) * 127.5 if f_val.min() < 0.0 else f_val * 255.0, 0, 255).astype(np.uint8)
             rgb = np.stack([scaled, scaled, scaled], axis=-1)

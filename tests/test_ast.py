@@ -32,6 +32,11 @@ def test_constant_node_immutability():
         node.value = 2.0  # type: ignore
 
 
+def test_constant_node_repr_round_trips_fitted_coefficients():
+    value = 0.12345678901234567
+    assert float(repr(ConstantNode(value))) == value
+
+
 def test_variable_node_validation():
     x_node = VariableNode("x")
     assert x_node.name == "x"

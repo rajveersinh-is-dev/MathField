@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 from PIL import Image
 
-from mathfield.core.ast.nodes import ASTNode, BinaryOpNode, ConstantNode, FunctionCallNode, UnaryOpNode
 from mathfield.core.domain import CoordinateDomain2D, DomainMode
 from mathfield.core.pipeline.controller import ReconstructionController
 from mathfield.export.csv_export import export_csv_parameters
@@ -125,19 +124,6 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
         help="Internal hook for testing subprocess timeout behavior",
     )
     return parser.parse_args(argv)
-
-
-def _ast_constants(node: ASTNode) -> List[float]:
-    """Collect fitted numeric constants from a discovered symbolic AST."""
-    if isinstance(node, ConstantNode):
-        return [float(node.value)]
-    if isinstance(node, BinaryOpNode):
-        return _ast_constants(node.left) + _ast_constants(node.right)
-    if isinstance(node, UnaryOpNode):
-        return _ast_constants(node.operand)
-    if isinstance(node, FunctionCallNode):
-        return [v for arg in node.args for v in _ast_constants(arg)]
-    return []
 
 
 def _chebyshev_expression(order: int, variable: str) -> str:
@@ -289,14 +275,19 @@ def main(argv: List[str] | None = None) -> int:
 
     norm_mode = args.mode.lower()
     is_mode_a = norm_mode in ("discovery", "mode_a", "a")
+    channel_labels = "RGBA" if color_space == "RGBA" else "RGB"
 
     # Format global model
     global_model = dict(context.global_model) if context.global_model else {}
+    channel_coefficients = global_model.pop("channel_coefficients", []) if is_mode_a else []
     if "channels" not in global_model:
         channels_list = []
         if is_mode_a:
-            formula_str = global_model.get("formula", "sin(x) + cos(y)")
-            channels_list.append({"channel": "RGB", "formula": formula_str, "parameters": [1.0]})
+            channel_asts = global_model.get("channel_asts") or []
+            channels_list = [
+                {"channel": label, "formula": str(ast), "parameters": [float(value) for value in coefficients]}
+                for label, ast, coefficients in zip(channel_labels, channel_asts, channel_coefficients, strict=True)
+            ]
         else:
             deg = global_model.get("degree", 6)
             if "coefficients" in global_model and global_model["coefficients"] is not None:
@@ -318,18 +309,9 @@ def main(argv: List[str] | None = None) -> int:
     # Collect parameters for CSV export
     parameters_dict: Dict[str, Any] = {}
     if is_mode_a:
-        channel_asts = global_model.get("channel_asts") or []
-        constants = [
-            value
-            for ast in channel_asts
-            for value in _ast_constants(ast)
-            if abs(value) > 1e-12
-        ]
-        if not constants:
-            best_ast = global_model.get("symbolic_ast")
-            constants = _ast_constants(best_ast) if best_ast is not None else []
-        for i, value in enumerate(constants):
-            parameters_dict[f"c{i}"] = {"stage": "global", "channel": "RGB", "value": float(value)}
+        for label, coefficients in zip(channel_labels, channel_coefficients, strict=True):
+            for i, value in enumerate(coefficients):
+                parameters_dict[f"{label}_c{i}"] = {"stage": "global", "channel": label, "value": float(value)}
     else:
         if "coefficients" in global_model and global_model["coefficients"] is not None:
             actual = np.asarray(global_model["coefficients"])
@@ -397,11 +379,10 @@ def main(argv: List[str] | None = None) -> int:
     save_project(proj_dict, proj_path)
 
     if is_mode_a:
+        channel_asts = global_model.get("channel_asts") or []
         mode_expr = {
-            "R": str(global_model.get("symbolic_ast", global_model.get("formula", "0"))),
-            "G": str(global_model.get("symbolic_ast", global_model.get("formula", "0"))),
-            "B": str(global_model.get("symbolic_ast", global_model.get("formula", "0"))),
-            "formula": str(global_model.get("formula", "0")),
+            label: str(ast)
+            for label, ast in zip(channel_labels, channel_asts, strict=True)
         }
     else:
         mode_expr = {
@@ -414,9 +395,7 @@ def main(argv: List[str] | None = None) -> int:
     global_equations = {
         channel: _format_mode_b_channel(global_model, index, human=True)
         for index, channel in enumerate("RGB")
-    } if not is_mode_a else {
-        channel: mode_expr[channel] for channel in "RGB"
-    }
+    } if not is_mode_a else dict(mode_expr)
 
     export_result = {
         "coordinate_domain": proj_dict["coordinate_domain"],
@@ -429,6 +408,7 @@ def main(argv: List[str] | None = None) -> int:
         "metrics": metrics,
         "rendered_image": context.rendered_image,
         "original_image": img_arr,
+        "random_seed": args.seed,
     }
 
     if args.export_csv:

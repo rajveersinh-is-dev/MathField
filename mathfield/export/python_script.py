@@ -60,7 +60,7 @@ def export_standalone_script(
 
     # Generate Python expression strings for channels
     has_rgb = any(k in expressions for k in ("R", "G", "B"))
-    has_alpha = "A" in expressions
+    has_alpha = "A" in expressions or "alpha" in expressions
 
     def _compile_expr_to_py(expr: Any) -> str:
         if isinstance(expr, (int, float)):
@@ -80,7 +80,7 @@ def export_standalone_script(
         r_code = _compile_expr_to_py(expressions.get("R", "0"))
         g_code = _compile_expr_to_py(expressions.get("G", "0"))
         b_code = _compile_expr_to_py(expressions.get("B", "0"))
-        a_code = _compile_expr_to_py(expressions.get("A", "1")) if has_alpha else ""
+        a_code = _compile_expr_to_py(expressions.get("A", expressions.get("alpha", "1"))) if has_alpha else ""
 
         render_logic = (
             "    R = " + r_code + "\n"

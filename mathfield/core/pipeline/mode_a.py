@@ -86,6 +86,7 @@ class ModeAPipeline:
         # Solve linear coefficients for polynomial basis per channel
         pruner = BICPruner()
         channel_asts = []
+        channel_coefficients = []
         fitted_channels = []
 
         for ch in range(c):
@@ -93,9 +94,10 @@ class ModeAPipeline:
             # BIC pruning backward elimination
             prune_res = pruner.prune_matrix(Phi, y_ch, reg_lambda=lambda_reg)
             cheb_ch = Chebyshev2D(deg_x=deg, deg_y=deg, truncation="total_degree", coefficients=prune_res.coefficients)
-            ast_ch = cheb_ch.to_ast()
+            ast_ch = cheb_ch.to_ast(prune_threshold=0.0)
             channel_asts.append(ast_ch)
-            fitted_channels.append((Phi @ prune_res.coefficients).reshape(h, w))
+            channel_coefficients.append(prune_res.coefficients.copy())
+            fitted_channels.append(ast_ch.compile_numpy()(X, Y, np.empty(0, dtype=np.float64)).reshape(h, w))
 
         fitted_arr = np.stack(fitted_channels, axis=-1) if c > 1 else fitted_channels[0]
         fitted_arr = np.clip(fitted_arr, 0.0, 1.0)
@@ -113,6 +115,7 @@ class ModeAPipeline:
         context.global_model = {
             "type": "mode_a_discovery",
             "channel_asts": channel_asts,
+            "channel_coefficients": channel_coefficients,
             "symbolic_ast": best_ast,
             "formula": str(best_ast),
             "complexity": best_ast.complexity(),
