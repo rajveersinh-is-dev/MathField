@@ -13,6 +13,7 @@ import math
 import numpy as np
 import pytest
 
+from mathfield.core.ast.parser import parse
 from mathfield.core.basis.fourier import DCT2Basis, Fourier2D
 from mathfield.core.basis.polynomial import Chebyshev2D
 from mathfield.core.domain import CoordinateDomain2D
@@ -360,6 +361,27 @@ def test_mode_a_discovery() -> None:
     assert context.metrics["psnr"] > 15.0
     assert context.metrics["converged"] in (0.0, 1.0)
     assert context.metrics["generations_run"] >= 1.0
+
+
+def test_mode_a_delivers_evolutionary_candidate_when_it_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    domain = CoordinateDomain2D(width=16, height=16)
+    X, Y = domain.to_discrete_grid()
+    formula = "0.5 + 0.25*sin(3*pi*x) + 0.2*cos(2*pi*y)"
+    target = 0.5 + 0.25 * np.sin(3 * np.pi * X) + 0.2 * np.cos(2 * np.pi * Y)
+    candidate = parse(formula)
+
+    def fake_evolve(self, X, Y, target, sample_weights=None):
+        return candidate, {"best_mse": 0.0, "converged": True, "generations_run": 1}
+
+    monkeypatch.setattr(EvolutionaryOptimizer, "evolve", fake_evolve)
+    context = PipelineContext(image=target, domain=domain)
+    assert ModeAPipeline(config={"max_iter": 1, "seed": 42}).execute(context) == StageStatus.COMPLETED
+    assert context.global_model["delivered_model"] == "evolutionary_luminance"
+    assert context.global_model["channel_asts"] == [candidate]
+    assert context.global_model["formula"] == str(candidate)
+    assert context.global_model["evo_diagnostics"]["delivered"] is True
+    np.testing.assert_allclose(context.rendered_image, target, atol=1e-12)
+    assert context.metrics["mse"] < 1e-20
 
 
 def test_mode_a_rgba_fit_ignores_hidden_rgb() -> None:

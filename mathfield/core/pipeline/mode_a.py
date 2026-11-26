@@ -9,16 +9,29 @@ Zero lookup tables or direct raster memorization.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 
+from mathfield.core.ast.nodes import ASTNode, BinaryOpNode, ConstantNode, FunctionCallNode, UnaryOpNode
 from mathfield.core.basis.polynomial import Chebyshev2D
 from mathfield.core.image_analysis import ImageAnalyzer
 from mathfield.core.optimize.evolutionary import EvolutionaryOptimizer
 from mathfield.core.pipeline.stage import PipelineContext, StageStatus
 from mathfield.core.verify.metrics import compute_metrics
 from mathfield.core.verify.pruning import BICPruner
+
+
+def _ast_constants(node: ASTNode) -> List[float]:
+    if isinstance(node, ConstantNode):
+        return [float(node.value)]
+    if isinstance(node, BinaryOpNode):
+        return _ast_constants(node.left) + _ast_constants(node.right)
+    if isinstance(node, UnaryOpNode):
+        return _ast_constants(node.operand)
+    if isinstance(node, FunctionCallNode):
+        return [value for arg in node.args for value in _ast_constants(arg)]
+    return []
 
 
 class ModeAPipeline:
@@ -115,14 +128,51 @@ class ModeAPipeline:
         )
         best_ast, evo_diag = evo.evolve(X, Y, target_lum, sample_weights=alpha_weights)
 
+        chebyshev_metrics = compute_metrics(fitted_arr, img_arr)
+        chebyshev_complexity = sum(ast.complexity() for ast in channel_asts)
+        candidate_channel = np.clip(
+            best_ast.compile_numpy()(X, Y, np.empty(0, dtype=np.float64)),
+            0.0,
+            1.0,
+        )
+        candidate_arr = np.repeat(candidate_channel[:, :, np.newaxis], c, axis=-1) if c > 1 else candidate_channel
+        candidate_metrics = compute_metrics(candidate_arr, img_arr)
+        candidate_complexity = c * best_ast.complexity()
+        chebyshev_objective = chebyshev_metrics["mse"] + lambda_reg * chebyshev_complexity
+        candidate_objective = candidate_metrics["mse"] + lambda_reg * candidate_complexity
+        use_candidate = candidate_metrics["mse"] < chebyshev_metrics["mse"] and candidate_objective < chebyshev_objective
+        if use_candidate:
+            channel_asts = [best_ast] * c
+            channel_coefficients = [_ast_constants(best_ast) for _ in range(c)]
+            fitted_arr = candidate_arr
+            selected_metrics = candidate_metrics
+            delivered_model = "evolutionary_luminance"
+            delivered_ast = best_ast
+        else:
+            selected_metrics = chebyshev_metrics
+            delivered_model = "per_channel_chebyshev"
+            delivered_ast = channel_asts[0]
+        delivered_complexity = sum(ast.complexity() for ast in channel_asts)
+        evo_diag.update(
+            {
+                "delivered": use_candidate,
+                "candidate_mse": candidate_metrics["mse"],
+                "candidate_complexity": float(candidate_complexity),
+                "candidate_objective": candidate_objective,
+                "chebyshev_objective": chebyshev_objective,
+            }
+        )
+
         # Store model in context
         context.global_model = {
             "type": "mode_a_discovery",
             "channel_asts": channel_asts,
             "channel_coefficients": channel_coefficients,
             "symbolic_ast": best_ast,
-            "formula": str(best_ast),
-            "complexity": best_ast.complexity(),
+            "luminance_candidate": str(best_ast),
+            "formula": str(delivered_ast),
+            "delivered_model": delivered_model,
+            "complexity": delivered_complexity,
             "evo_diagnostics": evo_diag,
         }
 
@@ -133,7 +183,7 @@ class ModeAPipeline:
         if context.is_cancelled():
             return StageStatus.CANCELLED
 
-        metrics = compute_metrics(fitted_arr, img_arr)
+        metrics = dict(selected_metrics)
         metrics["converged"] = float(evo_diag["converged"])
         metrics["generations_run"] = float(evo_diag["generations_run"])
         context.metrics = metrics
