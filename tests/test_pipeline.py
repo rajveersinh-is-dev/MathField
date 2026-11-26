@@ -90,6 +90,93 @@ def test_stage3_partition_of_unity_completeness() -> None:
     np.testing.assert_allclose(sum_weights, 1.0, atol=1e-5)
 
 
+def _dense_partition_reference(pou, leaves, X, Y):
+    if len(leaves) == 1:
+        return np.ones((1, *X.shape), dtype=np.float64)
+    x_flat = np.asarray(X, dtype=np.float64).ravel()
+    y_flat = np.asarray(Y, dtype=np.float64).ravel()
+    centers = np.array([leaf.center for leaf in leaves])
+    half_widths = np.array([leaf.half_widths for leaf in leaves])
+
+    def build(factor):
+        rx = factor * np.maximum(half_widths[:, 0], 1e-6)
+        ry = factor * np.maximum(half_widths[:, 1], 1e-6)
+        dx = (x_flat[None, :] - centers[:, 0:1]) / rx[:, None]
+        dy = (y_flat[None, :] - centers[:, 1:2]) / ry[:, None]
+        if pou.separable:
+            adx = np.minimum(np.abs(dx), 1.0)
+            ady = np.minimum(np.abs(dy), 1.0)
+            inside = (np.abs(dx) <= 1.0 + 1e-12) & (np.abs(dy) <= 1.0 + 1e-12)
+            wx = ((1.0 - adx) ** 4.0) * (4.0 * adx + 1.0)
+            wy = ((1.0 - ady) ** 4.0) * (4.0 * ady + 1.0)
+            return np.where(inside, wx * wy, 0.0)
+        radius = np.sqrt(dx * dx + dy * dy)
+        sr = np.minimum(radius, 1.0)
+        return np.where(radius <= 1.0 + 1e-12, ((1.0 - sr) ** 4.0) * (4.0 * sr + 1.0), 0.0)
+
+    factor = 1.0 + max(pou.overlap_ratio, 1e-6)
+    weights = build(factor)
+    for _ in range(12):
+        if np.all(np.sum(weights, axis=0) > 1e-12):
+            break
+        factor *= 1.25
+        weights = build(factor)
+    zero_mask = np.sum(weights, axis=0) <= 1e-12
+    if np.any(zero_mask):
+        zx, zy = x_flat[zero_mask], y_flat[zero_mask]
+        d2 = (centers[:, 0:1] - zx[None, :]) ** 2 + (centers[:, 1:2] - zy[None, :]) ** 2
+        weights[:, zero_mask] = np.exp(-d2 / max(float(np.max(d2)), 1e-12))
+    return (weights / np.maximum(np.sum(weights, axis=0), 1e-300)).reshape(len(leaves), *X.shape)
+
+
+@pytest.mark.parametrize("separable", [True, False])
+@pytest.mark.parametrize("overlap_ratio", [0.0, 0.25])
+@pytest.mark.parametrize("outside", [False, True])
+def test_partition_of_unity_sparse_iteration_matches_dense_reference(
+    separable: bool,
+    overlap_ratio: float,
+    outside: bool,
+) -> None:
+    leaves = [
+        QuadtreeNode(bounds=(-1.0, -1.0, 0.0, 0.0), depth=1, is_leaf=True),
+        QuadtreeNode(bounds=(0.0, -1.0, 1.0, 0.0), depth=1, is_leaf=True),
+        QuadtreeNode(bounds=(-1.0, 0.0, 0.0, 1.0), depth=1, is_leaf=True),
+        QuadtreeNode(bounds=(0.0, 0.0, 1.0, 1.0), depth=1, is_leaf=True),
+    ]
+    extent = 1.3 if outside else 1.0
+    axis = np.linspace(-extent, extent, 29)
+    X, Y = np.meshgrid(axis, axis)
+    pou = WendlandPartitionOfUnity(overlap_ratio=overlap_ratio, separable=separable)
+    expected = _dense_partition_reference(pou, leaves, X, Y)
+    actual = pou.compute_weights(leaves, X, Y)
+    np.testing.assert_allclose(actual, expected, atol=2e-14)
+    np.testing.assert_allclose(np.sum(actual, axis=0), 1.0, atol=2e-14)
+
+    streamed = np.zeros_like(actual)
+    flat = streamed.reshape(len(leaves), -1)
+    for k, indices, values in pou.iter_weights(leaves, X, Y):
+        flat[k, indices] = values
+    np.testing.assert_array_equal(streamed, actual)
+
+
+def test_partition_of_unity_sparse_storage_is_proportional_to_support() -> None:
+    leaves = []
+    for row in range(4):
+        for col in range(4):
+            leaves.append(
+                QuadtreeNode(
+                    bounds=(-1.0 + col * 0.5, -1.0 + row * 0.5, -0.5 + col * 0.5, -0.5 + row * 0.5),
+                    depth=2,
+                    is_leaf=True,
+                )
+            )
+    axis = np.linspace(-1.0, 1.0, 128)
+    X, Y = np.meshgrid(axis, axis)
+    pou = WendlandPartitionOfUnity(overlap_ratio=0.25)
+    nonzero = sum(indices.size for _, indices, _ in pou.iter_weights(leaves, X, Y))
+    assert nonzero < 0.2 * len(leaves) * X.size
+
+
 @pytest.mark.parametrize("reg_lambda", [0.0, 1e-5])
 def test_local_patch_rgb_joint_solve_matches_channel_reference(reg_lambda: float) -> None:
     rng = np.random.default_rng(91)

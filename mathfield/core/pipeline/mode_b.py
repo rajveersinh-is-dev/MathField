@@ -167,7 +167,6 @@ class ModeBPipeline:
 
         overlap_ratio = float(cfg.get("overlap_ratio", 0.20))
         pou = WendlandPartitionOfUnity(overlap_ratio=overlap_ratio, separable=True)
-        weights = pou.compute_weights(leaves, X, Y)  # (K, H, W)
 
         local_correction = np.zeros_like(img_arr)
         patches: List[LocalPatch] = []
@@ -175,21 +174,24 @@ class ModeBPipeline:
         local_basis_type = str(cfg.get("local_basis_type", "dct2")).lower()
         local_freq = int(cfg.get("local_freq", 8))
 
-        for k, leaf in enumerate(leaves):
-            leaf_weight = weights[k]
-            active = leaf_weight > 1e-12
+        for k, flat_indices, flat_weights in pou.iter_weights(leaves, X, Y):
+            leaf = leaves[k]
+            active = flat_weights > 1e-12
             if not np.any(active):
                 patch = LocalPatch(bounds=leaf.bounds)
                 patches.append(patch)
                 continue
 
-            rows, cols = np.where(active)
+            flat_indices = flat_indices[active]
+            flat_weights = flat_weights[active]
+            rows, cols = np.divmod(flat_indices, w)
             r0, r1 = int(rows.min()), int(rows.max()) + 1
             c0, c1 = int(cols.min()), int(cols.max()) + 1
 
             sub_X = X[r0:r1, c0:c1]
             sub_Y = Y[r0:r1, c0:c1]
-            sub_W = leaf_weight[r0:r1, c0:c1]
+            sub_W = np.zeros((r1 - r0, c1 - c0), dtype=np.float64)
+            sub_W[rows - r0, cols - c0] = flat_weights
             sub_res = residual[r0:r1, c0:c1]
 
             if local_basis_type == "dct2":
