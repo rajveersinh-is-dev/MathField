@@ -160,6 +160,10 @@ class OptimizationWorker(threading.Thread):
             self.signals.progress.emit(0.0)
             if self.task is not None:
                 self._result = self.task()
+            if self._stop_requested:
+                self.signals.error.emit("Operation cancelled")
+                return
+            if self.task is not None:
                 self.signals.iteration_completed.emit(1, {"status": "complete"})
             self.signals.progress.emit(1.0)
             self.signals.finished.emit(self._result)

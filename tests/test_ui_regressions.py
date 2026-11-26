@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 
 import numpy as np
 import pytest
@@ -29,6 +30,47 @@ def test_worker_reuse_and_error_signal_delivery() -> None:
     assert worker.start_job(lambda: 42) is True
     assert worker.wait(2000)
     assert results == [42]
+    assert worker.is_busy is False
+
+
+def test_worker_cancellation_notifies_once_and_can_be_reused() -> None:
+    task_started = threading.Event()
+    release_task = threading.Event()
+
+    def cancellable_task() -> str:
+        task_started.set()
+        assert release_task.wait(timeout=2.0)
+        return "discarded"
+
+    worker = OptimizationWorker(cancellable_task)
+    events: list[tuple[str, object]] = []
+    worker.signals.progress.connect(lambda value: events.append(("progress", value)))
+    worker.signals.iteration_completed.connect(
+        lambda iteration, info: events.append(("iteration_completed", (iteration, info)))
+    )
+    worker.signals.finished.connect(lambda result: events.append(("finished", result)))
+    worker.signals.error.connect(lambda message: events.append(("error", message)))
+
+    assert worker.start_job() is True
+    assert task_started.wait(timeout=2.0)
+    worker.request_cancel()
+    events.clear()
+    release_task.set()
+    assert worker.wait(2000) is True
+
+    assert events == [("error", "Operation cancelled")]
+    assert worker.is_busy is False
+
+    events.clear()
+    assert worker.start_job(lambda: 42) is True
+    assert worker.wait(2000) is True
+
+    assert events == [
+        ("progress", 0.0),
+        ("iteration_completed", (1, {"status": "complete"})),
+        ("progress", 1.0),
+        ("finished", 42),
+    ]
     assert worker.is_busy is False
 
 
