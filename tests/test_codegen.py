@@ -187,6 +187,9 @@ def _mode_a_report_result():
                 "basis": {"type": "dct2", "freq_x": 2, "freq_y": 2},
             }
         ],
+        "mode_b_model": {"partition_of_unity": {"separable": False}},
+        "local_decomposition": {"partition_of_unity": {"separable": True}},
+        "partition_of_unity": {"separable": False},
     }
 
 
@@ -205,6 +208,9 @@ def _assert_mode_a_report_text(text: str) -> None:
         "quadtree",
         "wendland",
         "partition",
+        "radial",
+        "elliptical",
+        "sqrt",
         "fourier",
         "chebyshev",
         "hybrid",
@@ -286,6 +292,64 @@ def test_mode_b_reports_catalog_only_authoritative_local_patches(tmp_path, patch
         assert "p_999" not in normalized
         assert "fabricated_dct2" not in normalized
         assert "conflicting_local_patch" not in normalized
+
+
+@pytest.mark.parametrize("separable", [True, False])
+@pytest.mark.parametrize("partition_source", ["mode_b_model", "local_decomposition", "result"])
+def test_mode_b_reports_use_persisted_partition_separability(tmp_path, separable: bool, partition_source: str) -> None:
+    from mathfield.export.latex_report import export_latex_report
+    from mathfield.export.pdf_report import export_pdf_report
+
+    patch = _serialized_dct_patch()
+    result = {
+        "mode": "MODE_B_FIDELITY",
+        "global_equations": {"R": "0.5 + 0.1*x", "G": "0.4", "B": "0.3"},
+        "parameters": {"R_c0": 0.5},
+        "metrics": {"psnr": 30.0},
+        "local_patches": [patch],
+    }
+    partition = {"overlap_ratio": 0.33, "separable": separable}
+    conflicting_partition = {"overlap_ratio": 0.33, "separable": not separable}
+    if partition_source == "mode_b_model":
+        result["mode_b_model"] = {"local_patches": [patch], "partition_of_unity": partition}
+        result["local_decomposition"] = {"partition_of_unity": conflicting_partition}
+        result["partition_of_unity"] = conflicting_partition
+    elif partition_source == "local_decomposition":
+        result["mode_b_model"] = {"local_patches": [patch]}
+        result["local_decomposition"] = {"partition_of_unity": partition}
+        result["partition_of_unity"] = conflicting_partition
+    else:
+        result["mode_b_model"] = {"local_patches": [patch]}
+        result["partition_of_unity"] = partition
+
+    tex_path = tmp_path / f"mode_b_{partition_source}_{separable}.tex"
+    pdf_path = tmp_path / f"mode_b_{partition_source}_{separable}.pdf"
+    export_latex_report(result, tex_path)
+    export_pdf_report(result, pdf_path)
+
+    reports = (("latex", tex_path.read_text(encoding="utf-8")), ("pdf", _pdf_report_text(pdf_path)))
+    for report_format, text in reports:
+        normalized = _normalized_report_text(text)
+        assert "wendland" in normalized
+        assert "partition of unity" in normalized
+        if separable:
+            assert "separable bivariate" in normalized
+            if report_format == "latex":
+                assert r"\frac{|x - c_{x,k}|}{r_{x,k}}" in normalized
+                assert r"\frac{|y - c_{y,k}|}{r_{y,k}}" in normalized
+            else:
+                assert "|x - c_{x,k}| / r_{x,k}" in normalized
+                assert "|y - c_{y,k}| / r_{y,k}" in normalized
+            assert r"\sqrt" not in normalized
+            assert "sqrt(" not in normalized
+        else:
+            assert "radial bivariate" in normalized
+            radial_formula = r"\sqrt{dx^2 + dy^2}" if report_format == "latex" else "sqrt(dx^2 + dy^2)"
+            assert radial_formula in normalized
+            assert "dx = (x - c_{x,k}) / r_{x,k}" in normalized
+            assert "dy = (y - c_{y,k}) / r_{y,k}" in normalized
+            assert "|x - c_{x,k}|" not in normalized
+            assert "|y - c_{y,k}|" not in normalized
 
 
 def test_mode_b_reports_explicitly_when_local_patches_are_empty(tmp_path) -> None:

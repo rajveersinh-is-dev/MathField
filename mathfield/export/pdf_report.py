@@ -43,6 +43,17 @@ def _is_mode_a(mode: str) -> bool:
     return normalized in ("a", "discovery", "mode_a", "mode_a_discovery") or normalized.startswith("mode_a_")
 
 
+def _partition_is_separable(result: Dict[str, Any]) -> bool:
+    """Read persisted partition geometry, preferring the authoritative Mode B payload."""
+    for container in (result.get("mode_b_model"), result.get("local_decomposition"), result):
+        if not isinstance(container, dict):
+            continue
+        partition = container.get("partition_of_unity")
+        if isinstance(partition, dict) and "separable" in partition:
+            return bool(partition["separable"])
+    return True
+
+
 def _local_patches(result: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Return only authoritative serialized/local patch records, never display metadata."""
     mode_b_model = result.get("mode_b_model")
@@ -228,6 +239,7 @@ def export_pdf_report(
     mode_str = _report_mode(result)
     is_mode_a = _is_mode_a(mode_str)
     local_patches = [] if is_mode_a else _local_patches(result)
+    partition_is_separable = _partition_is_separable(result) if not is_mode_a else True
     channel_names = ("R", "G", "B", "A") if str(color_space).upper() == "RGBA" else ("R", "G", "B")
     channel_set = ", ".join(channel_names)
     metrics = result.get("metrics", {})
@@ -385,23 +397,37 @@ def export_pdf_report(
         # --- Section 3: Smooth C2 Wendland Partition of Unity Blending ---
         story.append(Paragraph("3. Smooth C² Partition of Unity Blending Windows", heading_style))
         if local_patches:
+            window_geometry = "separable" if partition_is_separable else "radial"
             story.append(
                 Paragraph(
                     "To blend serialized local patches without step discontinuities or boundary voids, "
-                    "each localized patch k is modulated by a separable bivariate C² Wendland weighting window:",
+                    f"each localized patch k is modulated by a {window_geometry} bivariate C² Wendland weighting window:",
                     body_style,
                 )
             )
             story.append(Spacer(1, 4))
-            wendland_formula = (
-                "w_k(x, y) = ψ₄( |x - c_{x,k}| / R_{x,k} ) · ψ₄( |y - c_{y,k}| / R_{y,k} ), "
-                "  where ψ₄(r) = (1 - r)₊⁴ (4r + 1)"
-            )
+            if partition_is_separable:
+                wendland_formula = (
+                    "w_k(x, y) = ψ₄( |x - c_{x,k}| / R_{x,k} ) · ψ₄( |y - c_{y,k}| / R_{y,k} ), "
+                    "  where ψ₄(r) = (1 - r)₊⁴ (4r + 1)"
+                )
+                window_detail = (
+                    "Here, (c_{x,k}, c_{y,k}) is the patch center and (R_{x,k}, R_{y,k}) is its expanded support radius. "
+                )
+            else:
+                wendland_formula = (
+                    "w_k(x, y) = ψ₄( sqrt(dx^2 + dy^2) ), "
+                    "  where ψ₄(r) = (1 - r)₊⁴ (4r + 1)"
+                )
+                window_detail = (
+                    "Here, dx = (x - c_{x,k}) / R_{x,k} and dy = (y - c_{y,k}) / R_{y,k} are normalized displacements. "
+                    "The patch center is (c_{x,k}, c_{y,k}) and its expanded support radius is (R_{x,k}, R_{y,k}). "
+                )
             story.append(Paragraph(wendland_formula, eq_style))
             story.append(Spacer(1, 4))
             story.append(
                 Paragraph(
-                    "Here, (c_{x,k}, c_{y,k}) is the patch center and (R_{x,k}, R_{y,k}) is its expanded support radius. "
+                    f"{window_detail}"
                     "The Wendland weights and their normal and tangential derivatives vanish at patch boundaries, "
                     "and Shepard normalization combines the weighted local fields.",
                     body_style,

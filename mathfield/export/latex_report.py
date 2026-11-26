@@ -36,6 +36,17 @@ def _is_mode_a(mode: str) -> bool:
     return normalized in ("a", "discovery", "mode_a", "mode_a_discovery") or normalized.startswith("mode_a_")
 
 
+def _partition_is_separable(result: Dict[str, Any]) -> bool:
+    """Read persisted partition geometry, preferring the authoritative Mode B payload."""
+    for container in (result.get("mode_b_model"), result.get("local_decomposition"), result):
+        if not isinstance(container, dict):
+            continue
+        partition = container.get("partition_of_unity")
+        if isinstance(partition, dict) and "separable" in partition:
+            return bool(partition["separable"])
+    return True
+
+
 def _local_patches(result: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Return only authoritative serialized/local patch records, never display metadata."""
     mode_b_model = result.get("mode_b_model")
@@ -120,6 +131,7 @@ def export_latex_report(
     mode_str = _report_mode(result)
     is_mode_a = _is_mode_a(mode_str)
     local_patches = [] if is_mode_a else _local_patches(result)
+    partition_is_separable = _partition_is_separable(result) if not is_mode_a else True
 
     expressions = result.get("expressions", {})
     global_eqs = result.get("global_equations", {})
@@ -217,13 +229,34 @@ def export_latex_report(
         local_sections = ""
     else:
         if local_patches:
+            if partition_is_separable:
+                wendland_intro = (
+                    "To blend serialized local patches without step discontinuities, compact separable bivariate Wendland windows are applied:"
+                )
+                wendland_formula = (
+                    "  w_k(x, y) = \\psi_4\\left(\\frac{|x - c_{x,k}|}{R_{x,k}}\\right) \\cdot \\psi_4\\left(\\frac{|y - c_{y,k}|}{R_{y,k}}\\right), "
+                    "\\quad \\psi_4(r) = (1 - r)_+^4 (4r + 1)\n"
+                )
+                wendland_detail = ""
+            else:
+                wendland_intro = (
+                    "To blend serialized local patches without step discontinuities, compact radial bivariate Wendland windows are applied:"
+                )
+                wendland_formula = (
+                    "  w_k(x, y) = \\psi_4\\left(\\sqrt{dx^2 + dy^2}\\right), "
+                    "\\quad \\psi_4(r) = (1 - r)_+^4 (4r + 1)\n"
+                )
+                wendland_detail = (
+                    "Here $dx = (x - c_{x,k}) / R_{x,k}$ and $dy = (y - c_{y,k}) / R_{y,k}$ are normalized displacements "
+                    "from the patch center.\n"
+                )
             wendland_section = (
                 "\\section{Smooth $C^2$ Wendland Partition of Unity}\n"
-                "To blend serialized local patches without step discontinuities, compact Wendland windows are applied:\n\n"
+                f"{wendland_intro}\n\n"
                 "\\begin{equation}\n"
-                "  w_k(x, y) = \\psi_4\\left(\\frac{|x - c_{x,k}|}{R_{x,k}}\\right) \\cdot \\psi_4\\left(\\frac{|y - c_{y,k}|}{R_{y,k}}\\right), "
-                "  \\quad \\psi_4(r) = (1 - r)_+^4 (4r + 1)\n"
-                "\\end{equation}"
+                f"{wendland_formula}"
+                "\\end{equation}\n"
+                f"{wendland_detail}"
             )
         else:
             wendland_section = (
