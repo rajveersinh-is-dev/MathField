@@ -8,7 +8,7 @@ Wendland C2 partition of unity blending, SVD condition monitoring, and condition
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 
@@ -18,7 +18,7 @@ from mathfield.core.image_analysis import ImageAnalyzer
 from mathfield.core.local.local_patch import LocalPatch
 from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
 from mathfield.core.local.quadtree import QuadtreeDecomposition
-from mathfield.core.optimize.conditioning import ConditionMonitor
+from mathfield.core.optimize.solvers import blocked_qr, solve_blocked_qr
 from mathfield.core.pipeline.stage import PipelineContext, StageStatus
 from mathfield.core.verify.metrics import compute_metrics
 
@@ -75,49 +75,54 @@ class ModeBPipeline:
 
         global_deg = int(self.config.get("global_degree", 6))
         global_basis = Chebyshev2D(deg_x=global_deg, deg_y=global_deg, truncation="total_degree")
-        Phi_cheb = global_basis.basis_matrix(X, Y)
 
         # Dense 2D Fourier harmonic expansion for high-frequency patterns
         fourier_freq = int(self.config.get("fourier_freq", 12))
         fourier_basis = Fourier2D(freq_x=fourier_freq, freq_y=fourier_freq, truncation="rectangular")
-        Phi_four = fourier_basis.basis_matrix(X, Y)
+        n_terms = global_basis.num_terms + fourier_basis.num_terms - 1
 
-        # Combine polynomial Chebyshev with harmonic Fourier terms (dropping redundant DC term)
-        Phi_global = np.hstack([Phi_cheb, Phi_four[:, 1:]])
-        n_terms = Phi_global.shape[1]
-
-        # Monitor conditioning of global basis
-        monitor = ConditionMonitor(
-            max_condition_number=float(cfg.get("max_condition_number", 1e10)),
-            tikhonov_alpha=float(cfg.get("tikhonov_alpha", reg_lambda)),
-        )
-        cond_rep = monitor.analyze_matrix(Phi_global)
-        context.condition_report = cond_rep
-
-        regularize = use_conditioning and bool(cond_rep["is_ill_conditioned"])
-        Phi_solve = monitor.regularize(Phi_global) if regularize else Phi_global
-
-        def solve_channel(b_ch: np.ndarray) -> np.ndarray:
-            rhs = np.concatenate([b_ch, np.zeros(n_terms)]) if regularize else b_ch
-            return np.linalg.lstsq(Phi_solve, rhs, rcond=1e-10)[0]
-
-        shared_coeffs: Optional[np.ndarray] = None
-        if not decouple_color and img_arr.ndim == 3:
+        x_flat = X.ravel()
+        y_flat = Y.ravel()
+        target_matrix = img_arr.reshape(-1, c) if img_arr.ndim == 3 else img_arr.reshape(-1, 1)
+        share_coefficients = not decouple_color and img_arr.ndim == 3
+        if share_coefficients:
             luminance = (
                 0.299 * img_arr[:, :, 0] + 0.587 * img_arr[:, :, 1] + 0.114 * img_arr[:, :, 2]
                 if c >= 3
                 else img_arr[:, :, 0]
             )
-            shared_coeffs = solve_channel(luminance.ravel())
-
-        if shared_coeffs is not None:
-            coefficient_matrix = np.repeat(shared_coeffs[:, np.newaxis], c, axis=1)
+            fit_targets = luminance.reshape(-1, 1)
         else:
-            targets = img_arr.reshape(-1, c) if img_arr.ndim == 3 else img_arr.reshape(-1, 1)
-            rhs = np.vstack([targets, np.zeros((n_terms, c))]) if regularize else targets
-            coefficient_matrix = np.linalg.lstsq(Phi_solve, rhs, rcond=1e-10)[0]
+            fit_targets = target_matrix
 
-        global_values = Phi_global @ coefficient_matrix
+        block_size = max(n_terms, int(cfg.get("fit_block_size", max(4096, 4 * n_terms))))
+
+        def design_block(x_values: np.ndarray, y_values: np.ndarray) -> np.ndarray:
+            chebyshev = global_basis.basis_matrix(x_values, y_values)
+            fourier = fourier_basis.basis_matrix(x_values, y_values)
+            return np.hstack([chebyshev, fourier[:, 1:]])
+
+        def fit_blocks() -> Iterator[Tuple[np.ndarray, np.ndarray]]:
+            for start in range(0, x_flat.size, block_size):
+                stop = min(start + block_size, x_flat.size)
+                yield design_block(x_flat[start:stop], y_flat[start:stop]), fit_targets[start:stop]
+
+        r_matrix, projected_targets = blocked_qr(fit_blocks(), n_terms)
+        coefficient_matrix, cond_rep = solve_blocked_qr(
+            r_matrix,
+            projected_targets,
+            reg_lambda=float(cfg.get("tikhonov_alpha", reg_lambda)),
+            max_condition_number=float(cfg.get("max_condition_number", 1e10)),
+            enable_regularization=use_conditioning,
+        )
+        if share_coefficients:
+            coefficient_matrix = np.repeat(coefficient_matrix, c, axis=1)
+        context.condition_report = cond_rep
+
+        global_values = np.empty((x_flat.size, c), dtype=np.float64)
+        for start in range(0, x_flat.size, block_size):
+            stop = min(start + block_size, x_flat.size)
+            global_values[start:stop] = design_block(x_flat[start:stop], y_flat[start:stop]) @ coefficient_matrix
         global_recon = global_values.reshape(h, w, c) if c > 1 else global_values[:, 0].reshape(h, w)
         context.global_model = {
             "type": "mode_b_global_hybrid",

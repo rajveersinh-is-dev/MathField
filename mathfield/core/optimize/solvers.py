@@ -10,10 +10,99 @@ Linear and Nonlinear Optimization Solvers:
 from __future__ import annotations
 
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 from scipy.optimize import minimize
+
+
+def blocked_qr(
+    blocks: Iterable[Tuple[np.ndarray, np.ndarray]],
+    n_terms: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Reduce streamed design/target blocks to R and Q^T B without storing all rows."""
+    if n_terms < 1:
+        raise ValueError("n_terms must be positive")
+
+    r_matrix: Optional[np.ndarray] = None
+    projected_targets: Optional[np.ndarray] = None
+    for design, targets in blocks:
+        a_block = np.asarray(design, dtype=np.float64)
+        b_block = np.asarray(targets, dtype=np.float64)
+        if b_block.ndim == 1:
+            b_block = b_block[:, np.newaxis]
+        if a_block.ndim != 2 or a_block.shape[1] != n_terms:
+            raise ValueError(f"Design block must have shape (N, {n_terms})")
+        if b_block.ndim != 2 or b_block.shape[0] != a_block.shape[0]:
+            raise ValueError("Target block rows must match the design block")
+
+        if r_matrix is None:
+            r_matrix = np.zeros((n_terms, n_terms), dtype=np.float64)
+            projected_targets = np.zeros((n_terms, b_block.shape[1]), dtype=np.float64)
+
+        q_block, r_block = np.linalg.qr(a_block, mode="reduced")
+        projected_block = q_block.T @ b_block
+        q_update, r_matrix = np.linalg.qr(np.vstack([r_matrix, r_block]), mode="reduced")
+        projected_targets = q_update.T @ np.vstack([projected_targets, projected_block])
+
+    if r_matrix is None or projected_targets is None:
+        raise ValueError("At least one design block is required")
+    return r_matrix, projected_targets
+
+
+def solve_blocked_qr(
+    r_matrix: np.ndarray,
+    projected_targets: np.ndarray,
+    reg_lambda: float = 0.0,
+    rcond: float = 1e-10,
+    max_condition_number: float = 1e10,
+    enable_regularization: bool = True,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """Solve a streamed QR system with rank diagnostics and optional Tikhonov damping."""
+    r_mat = np.asarray(r_matrix, dtype=np.float64)
+    targets = np.asarray(projected_targets, dtype=np.float64)
+    if targets.ndim == 1:
+        targets = targets[:, np.newaxis]
+    if r_mat.ndim != 2 or r_mat.shape[0] != r_mat.shape[1]:
+        raise ValueError("R must be a square matrix")
+    if targets.shape[0] != r_mat.shape[0]:
+        raise ValueError("Projected target rows must match R")
+
+    u_mat, singular_values, vt_mat = np.linalg.svd(r_mat, full_matrices=False)
+    sigma_max = float(singular_values[0]) if singular_values.size else 0.0
+    sigma_min = float(singular_values[-1]) if singular_values.size else 0.0
+    cutoff = rcond * sigma_max
+    rank = int(np.sum(singular_values >= cutoff)) if sigma_max > 0.0 else 0
+    raw_condition = sigma_max / sigma_min if sigma_min > 0.0 else float("inf")
+    effective_condition = sigma_max / float(singular_values[rank - 1]) if rank > 0 else 0.0
+    rank_ambiguous = bool(np.any((singular_values > 0.5 * cutoff) & (singular_values < 2.0 * cutoff)))
+    is_ill = raw_condition >= max_condition_number or rank < r_mat.shape[0] or rank_ambiguous
+    regularized = bool(enable_regularization and is_ill and reg_lambda > 0.0)
+
+    if regularized:
+        factors = singular_values / (singular_values * singular_values + reg_lambda)
+        factors[singular_values < cutoff] = 0.0
+    else:
+        factors = np.zeros_like(singular_values)
+        active = (singular_values >= cutoff) & (singular_values > 0.0)
+        factors[active] = 1.0 / singular_values[active]
+    coefficients = vt_mat.T @ (factors[:, np.newaxis] * (u_mat.T @ targets))
+
+    diagnostics: Dict[str, Any] = {
+        "condition_number": float(effective_condition),
+        "raw_condition_number": raw_condition if math.isfinite(raw_condition) else None,
+        "max_singular_value": sigma_max,
+        "min_singular_value": sigma_min,
+        "singular_values": singular_values,
+        "effective_rank": rank,
+        "rank_cutoff": float(cutoff),
+        "rank_ambiguous": rank_ambiguous,
+        "is_ill_conditioned": bool(is_ill),
+        "is_singular": rank < r_mat.shape[0],
+        "is_regularized": regularized,
+        "recommended_tikhonov": max(1e-12 * sigma_max**2, (sigma_max / 1e8) ** 2),
+    }
+    return coefficients, diagnostics
 
 
 def solve_linear_lstsq(

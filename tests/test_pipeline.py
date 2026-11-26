@@ -13,7 +13,8 @@ import math
 import numpy as np
 import pytest
 
-from mathfield.core.basis.fourier import DCT2Basis
+from mathfield.core.basis.fourier import DCT2Basis, Fourier2D
+from mathfield.core.basis.polynomial import Chebyshev2D
 from mathfield.core.domain import CoordinateDomain2D
 from mathfield.core.image_analysis import ImageAnalyzer
 from mathfield.core.local.local_patch import LocalPatch
@@ -262,6 +263,67 @@ def test_mode_b_joint_global_solve_matches_channel_reference() -> None:
     targets = image.reshape(-1, 3)
     expected = np.column_stack([np.linalg.lstsq(phi, targets[:, ch], rcond=1e-10)[0] for ch in range(3)])
     np.testing.assert_allclose(model["coefficients"], expected, atol=2e-11)
+
+
+@pytest.mark.parametrize("decouple_color", [True, False])
+def test_mode_b_streaming_blocks_match_single_block_reconstruction(decouple_color: bool) -> None:
+    rng = np.random.default_rng(81)
+    height, width = 18, 22
+    domain = CoordinateDomain2D(width=width, height=height)
+    image = rng.uniform(0.0, 1.0, size=(height, width, 3))
+    contexts = []
+    for block_size in (50, 1000):
+        context = PipelineContext(image=image, domain=domain)
+        pipeline = ModeBPipeline(
+            config={
+                "global_degree": 2,
+                "fourier_freq": 2,
+                "max_depth": 0,
+                "enable_varpro": False,
+                "decouple_color": decouple_color,
+                "fit_block_size": block_size,
+            }
+        )
+        assert pipeline.execute(context) == StageStatus.COMPLETED
+        contexts.append(context)
+
+    np.testing.assert_allclose(contexts[0].global_model["coefficients"], contexts[1].global_model["coefficients"], atol=2e-11)
+    np.testing.assert_allclose(contexts[0].rendered_image, contexts[1].rendered_image, atol=2e-11)
+    assert contexts[0].condition_report["effective_rank"] == contexts[1].condition_report["effective_rank"]
+
+
+def test_mode_b_global_basis_is_materialized_in_bounded_blocks(monkeypatch: pytest.MonkeyPatch) -> None:
+    height, width = 40, 50
+    domain = CoordinateDomain2D(width=width, height=height)
+    image = np.zeros((height, width, 3), dtype=np.float64)
+    observed_rows: list[int] = []
+    original_chebyshev = Chebyshev2D.basis_matrix
+    original_fourier = Fourier2D.basis_matrix
+
+    def tracked_chebyshev(self, X, Y):
+        observed_rows.append(X.size)
+        return original_chebyshev(self, X, Y)
+
+    def tracked_fourier(self, X, Y):
+        observed_rows.append(X.size)
+        return original_fourier(self, X, Y)
+
+    monkeypatch.setattr(Chebyshev2D, "basis_matrix", tracked_chebyshev)
+    monkeypatch.setattr(Fourier2D, "basis_matrix", tracked_fourier)
+    context = PipelineContext(image=image, domain=domain)
+    pipeline = ModeBPipeline(
+        config={
+            "global_degree": 2,
+            "fourier_freq": 2,
+            "max_depth": 0,
+            "enable_varpro": False,
+            "fit_block_size": 128,
+        }
+    )
+
+    assert pipeline.execute(context) == StageStatus.COMPLETED
+    assert observed_rows
+    assert max(observed_rows) <= 128
 
 
 def test_controller_lifecycle() -> None:
