@@ -138,7 +138,7 @@ flowchart TD
 ## Testing and verification
 
 ```powershell
-python -m pytest                 # 664 tests: 310 unit + 354 end-to-end
+python -m pytest                 # 728 tests: 374 unit + 354 end-to-end
 python -m pytest tests/          # unit / integration suite
 python -m pytest -m tier1        # feature-coverage e2e tier
 python -m ruff check .           # static analysis
