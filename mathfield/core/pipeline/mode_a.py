@@ -113,7 +113,7 @@ class ModeAPipeline:
             lambda_reg=lambda_reg,
             tolerance=tolerance,
         )
-        best_ast, evo_diag = evo.evolve(X, Y, target_lum)
+        best_ast, evo_diag = evo.evolve(X, Y, target_lum, sample_weights=alpha_weights)
 
         # Store model in context
         context.global_model = {

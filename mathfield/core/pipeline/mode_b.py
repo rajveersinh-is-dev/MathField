@@ -185,7 +185,7 @@ class ModeBPipeline:
             min_patch_size=4,
             sobolev_mu=0.1,
         )
-        root = quadtree.decompose(residual, domain=context.domain)
+        root = quadtree.decompose(res_mag, domain=context.domain)
         leaves = quadtree.get_leaf_nodes(root)
 
         # --- Stage 4: Local Patch Fitting & Partition of Unity Blending ---

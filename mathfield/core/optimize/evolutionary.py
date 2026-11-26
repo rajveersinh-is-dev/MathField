@@ -110,15 +110,26 @@ class EvolutionaryOptimizer:
         X: np.ndarray,
         Y: np.ndarray,
         target: np.ndarray,
+        sample_weights: Optional[np.ndarray] = None,
     ) -> None:
         try:
             pred = evaluate_numpy(ind.ast, X, Y, np.array([]))
-            diff = pred - target
-            # Guard against NaN/Inf
-            if not np.all(np.isfinite(diff)):
-                ind.mse = 1e6
+            if sample_weights is None:
+                diff = pred - target
+                if not np.all(np.isfinite(diff)):
+                    ind.mse = 1e6
+                else:
+                    ind.mse = float(np.mean(diff**2))
+            elif not np.any(sample_weights > 0.0):
+                ind.mse = 0.0
             else:
-                ind.mse = float(np.mean(diff**2))
+                active = sample_weights > 0.0
+                diff = (pred - target)[active]
+                if not np.all(np.isfinite(diff)):
+                    ind.mse = 1e6
+                else:
+                    weights = sample_weights[active]
+                    ind.mse = float(np.sum(weights * diff**2) / np.sum(weights))
         except Exception:
             ind.mse = 1e6
 
@@ -229,15 +240,23 @@ class EvolutionaryOptimizer:
         target: np.ndarray,
         generations: Optional[int] = None,
         callback: Optional[Callable[[int, Individual], None]] = None,
+        sample_weights: Optional[np.ndarray] = None,
     ) -> Tuple[ASTNode, Dict[str, Any]]:
         """
         Execute deterministic evolutionary search loop.
         """
         n_gens = generations if generations is not None else self.generations
+        if sample_weights is not None:
+            weights = np.asarray(sample_weights, dtype=np.float64).ravel()
+            if weights.size != target.size:
+                raise ValueError("Sample weight count must match the target size")
+            if not np.all(np.isfinite(weights)) or np.any(weights < 0.0):
+                raise ValueError("Sample weights must be finite and non-negative")
+            sample_weights = weights
         population = self._generate_population()
 
         for ind in population:
-            self._evaluate_individual(ind, X, Y, target)
+            self._evaluate_individual(ind, X, Y, target, sample_weights)
             self._update_pareto(ind)
 
         best_overall = min(population, key=lambda ind: ind.fitness)
@@ -268,8 +287,8 @@ class EvolutionaryOptimizer:
                 ind1 = Individual(ast=c1_ast)
                 ind2 = Individual(ast=c2_ast)
 
-                self._evaluate_individual(ind1, X, Y, target)
-                self._evaluate_individual(ind2, X, Y, target)
+                self._evaluate_individual(ind1, X, Y, target, sample_weights)
+                self._evaluate_individual(ind2, X, Y, target, sample_weights)
 
                 self._update_pareto(ind1)
                 self._update_pareto(ind2)

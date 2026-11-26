@@ -380,11 +380,15 @@ def test_mode_a_rgba_fit_ignores_hidden_rgb() -> None:
     contexts = []
     for image in (first, second):
         context = PipelineContext(image=image, domain=domain)
-        assert ModeAPipeline(config={"max_iter": 1, "seed": 42}).execute(context) == StageStatus.COMPLETED
+        assert ModeAPipeline(config={"max_iter": 5, "seed": 6}).execute(context) == StageStatus.COMPLETED
         contexts.append(context)
     for actual, expected in zip(contexts[0].global_model["channel_coefficients"], contexts[1].global_model["channel_coefficients"], strict=True):
         np.testing.assert_allclose(actual, expected, atol=1e-12)
     np.testing.assert_allclose(contexts[0].rendered_image, contexts[1].rendered_image, atol=1e-12)
+    assert contexts[0].global_model["symbolic_ast"] == contexts[1].global_model["symbolic_ast"]
+    assert contexts[0].global_model["evo_diagnostics"] == contexts[1].global_model["evo_diagnostics"]
+    assert contexts[0].metrics["converged"] == contexts[1].metrics["converged"]
+    assert contexts[0].metrics["generations_run"] == contexts[1].metrics["generations_run"]
     assert contexts[0].metrics["mse"] == pytest.approx(contexts[1].metrics["mse"], abs=1e-15)
 
 
@@ -421,7 +425,7 @@ def test_mode_b_rgba_fit_ignores_hidden_rgb() -> None:
         "global_degree": 1,
         "fourier_freq": 1,
         "max_depth": 1,
-        "split_threshold": 0.0,
+        "split_threshold": 1e-4,
         "local_freq": 1,
         "enable_varpro": False,
     }
@@ -431,6 +435,9 @@ def test_mode_b_rgba_fit_ignores_hidden_rgb() -> None:
         assert ModeBPipeline(config=config).execute(context) == StageStatus.COMPLETED
         contexts.append(context)
     np.testing.assert_allclose(contexts[0].global_model["coefficients"], contexts[1].global_model["coefficients"], atol=1e-12)
+    assert [patch.bounds for patch in contexts[0].local_decomposition["patches"]] == [
+        patch.bounds for patch in contexts[1].local_decomposition["patches"]
+    ]
     for actual, expected in zip(contexts[0].local_decomposition["patches"], contexts[1].local_decomposition["patches"], strict=True):
         np.testing.assert_allclose(actual.coefficients, expected.coefficients, atol=1e-12)
     np.testing.assert_allclose(contexts[0].rendered_image, contexts[1].rendered_image, atol=1e-12)
