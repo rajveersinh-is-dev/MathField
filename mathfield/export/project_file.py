@@ -320,7 +320,7 @@ def load_project(path: Union[str, Path]) -> Dict[str, Any]:
         if trusted_mode_b is None:
             raise ProjectFileError("Compact Mode B projects require a validated model payload.")
         formulas = payload["channel_formulas"]
-        if payload["channel_formula_source"] == "mode_b_model":
+        if payload.get("channel_formula_source", "provided") == "mode_b_model":
             formulas = mode_b_machine_formulas(trusted_mode_b)
         payload.update(mode_b_legacy_views(trusted_mode_b, formulas))
     return payload

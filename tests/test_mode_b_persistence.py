@@ -605,6 +605,13 @@ def test_mode_b_compact_and_legacy_project_roundtrips(tmp_path: Path) -> None:
     assert raw_compact["local_decomposition"]["leaves_count"] == len(payload["local_patches"])
     assert all("coefficients" not in patch for patch in raw_compact["local_decomposition"]["patches"])
 
+    fieldless_source = copy.deepcopy(raw_compact)
+    fieldless_source.pop("channel_formula_source")
+    fieldless_path = tmp_path / "fieldless_source.mathfield"
+    fieldless_path.write_text(json.dumps(fieldless_source), encoding="utf-8")
+    fieldless_loaded = load_project(fieldless_path)
+    assert fieldless_loaded["channel_formulas"] == formulas
+
     loaded = load_project(compact_path)
     assert loaded["schema_version"] == "1.1.0"
     assert loaded["channel_formulas"] == formulas
