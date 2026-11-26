@@ -33,9 +33,24 @@ def to_python_code(node: ASTNode) -> str:
 
 
 def _protected_power_expr(base: str, exponent: str) -> str:
-    """Match runtime protected_pow: clamp exponent*log|base| to e^[-80, 80]."""
-    magnitude = f"np.maximum(np.abs({base}), 1e-15)"
-    return f"np.exp(np.clip(({exponent}) * np.log({magnitude}), -80.0, 80.0))"
+    """Emit an expression with the exact clamping and parity rules of protected_pow."""
+    # Keep this expression-only so to_python_code remains usable on its own. The
+    # nested lambdas evaluate each operand (and the rounded exponent) only once,
+    # avoiding repeated subexpressions for complex bases or exponents.
+    return (
+        "(lambda u, v: (lambda vc: (lambda vr: "
+        "np.where("
+        "(np.abs(u) < 1e-15) & (np.abs(v) < 1e-15), "
+        "1.0, "
+        "np.where("
+        "(u < 0.0) & np.isfinite(vc) & "
+        "np.isclose(vc, vr, atol=1e-7, rtol=0.0) & "
+        "(np.mod(np.abs(np.nan_to_num(vr, nan=0.0).astype(np.int64)), 2) == 1), "
+        "-1.0, 1.0) * "
+        "np.exp(np.clip(vc * np.log(np.maximum(np.abs(u), 1e-15)), -80.0, 80.0))"
+        "))(np.round(vc)))(np.clip(v, -80.0, 80.0)))"
+        f"({base}, {exponent})"
+    )
 
 
 def _flatten_additive(node: ASTNode, sign: int = 1) -> list[tuple[int, ASTNode]]:
@@ -81,10 +96,7 @@ def _node_to_numpy_expr(node: ASTNode) -> str:
             # thousands of terms; recursively parenthesising them exceeds
             # Python's nested-parenthesis limit when the script is compiled.
             terms = _flatten_additive(node)
-            parts = [
-                (sign, _node_to_numpy_expr(child))
-                for sign, child in terms
-            ]
+            parts = [(sign, _node_to_numpy_expr(child)) for sign, child in terms]
             expression = f"({parts[0][1]})"
             for sign, part in parts[1:]:
                 expression += f" {'+ ' if sign > 0 else '- '}({part})"
@@ -94,18 +106,7 @@ def _node_to_numpy_expr(node: ASTNode) -> str:
         elif op == "/":
             return f"({l_str} / ({r_str} + np.copysign(1e-12, {r_str})))"
         elif op in ("^", "**"):
-            if isinstance(node.right, ConstantNode):
-                rv = node.right.value
-                if rv == 2.0:
-                    return f"np.square({l_str})"
-                elif rv.is_integer():
-                    int_v = int(rv)
-                    sign_part = "-1.0" if int_v % 2 != 0 else "1.0"
-                    return f"(np.where({l_str} < 0.0, {sign_part}, 1.0) * {_protected_power_expr(l_str, f'{rv:g}')})"
-            return (
-                f"(np.where(({l_str} < 0.0) & (np.mod(np.abs(np.round(np.clip({r_str}, -80.0, 80.0))).astype(np.int64), 2) == 1), -1.0, 1.0) * "
-                f"{_protected_power_expr(l_str, f'np.clip({r_str}, -80.0, 80.0)')})"
-            )
+            return _protected_power_expr(l_str, r_str)
         elif op == "%":
             return f"np.fmod({l_str}, np.maximum(np.abs({r_str}), 1e-12))"
 
@@ -144,18 +145,7 @@ def _node_to_numpy_expr(node: ASTNode) -> str:
         elif f == "square":
             return f"np.square({args_str[0]})"
         elif f == "pow":
-            if isinstance(node.args[1], ConstantNode):
-                rv = node.args[1].value
-                if rv == 2.0:
-                    return f"np.square({args_str[0]})"
-                elif rv.is_integer():
-                    int_v = int(rv)
-                    sign_part = "-1.0" if int_v % 2 != 0 else "1.0"
-                    return f"(np.where({args_str[0]} < 0.0, {sign_part}, 1.0) * {_protected_power_expr(args_str[0], f'{rv:g}')})"
-            return (
-                f"(np.where(({args_str[0]} < 0.0) & (np.mod(np.abs(np.round(np.clip({args_str[1]}, -80.0, 80.0))).astype(np.int64), 2) == 1), -1.0, 1.0) * "
-                f"{_protected_power_expr(args_str[0], f'np.clip({args_str[1]}, -80.0, 80.0)')})"
-            )
+            return _protected_power_expr(args_str[0], args_str[1])
         elif f == "abs":
             return f"np.abs({args_str[0]})"
         elif f == "sign":
