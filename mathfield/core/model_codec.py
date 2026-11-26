@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import math
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from numbers import Integral
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,6 +21,53 @@ MODEL_CODEC_VERSION = "1.0.0"
 
 class ModeBCodecError(ValueError):
     """Raised when a serialized Mode B model has an invalid or unsupported shape."""
+
+
+@dataclass(frozen=True)
+class _ModeBPatchParts:
+    patch_id: int
+    bounds: Tuple[float, float, float, float]
+    basis_config: Mapping
+    basis: Any
+    coefficients: np.ndarray
+    coefficient_dimensions: int
+    error: float
+
+
+@dataclass(frozen=True)
+class _ModeBParts:
+    payload: Mapping
+    chebyshev_config: Mapping
+    fourier_config: Mapping
+    chebyshev: Any
+    fourier: Any
+    include_fourier_dc: bool
+    expected_terms: int
+    coefficients: np.ndarray
+    coefficient_dimensions: int
+    channel_count: int
+    channel_labels: Tuple[str, ...]
+    global_metadata: Mapping
+    partition: Mapping
+    patches: Tuple[_ModeBPatchParts, ...]
+
+
+class _ValidatedModeBPayload(dict):
+    """A shallow trusted view of a canonical payload validated exactly once.
+
+    Nested canonical values are shared by reference. Internal consumers must not
+    mutate this object; plain dictionaries are always treated as untrusted and
+    validated again when they cross a public persistence boundary.
+    """
+
+    def __init__(self, payload: Mapping, parts: _ModeBParts) -> None:
+        super().__init__(payload)
+        self._parts = parts
+
+    def __deepcopy__(self, memo: Dict[int, Any]) -> Dict[str, Any]:
+        # Explicit caller copies should remain ordinary mutable dictionaries and
+        # must not carry the internal trusted marker into a new payload.
+        return copy.deepcopy(dict(self), memo)
 
 
 def _mapping(value: Any, name: str) -> Mapping:
@@ -100,6 +148,15 @@ def _coefficient_array(value: Any, expected_terms: int, name: str) -> Tuple[np.n
     if not np.all(np.isfinite(array)):
         raise ModeBCodecError(f"{name} contains a non-finite coefficient.")
     return array, array.ndim
+
+
+def _channel_labels(value: Any, channel_count: int) -> Tuple[str, ...]:
+    labels = _sequence(value, "channel_labels")
+    if len(labels) != channel_count or any(not isinstance(label, str) or not label for label in labels):
+        raise ModeBCodecError("channel_labels must contain one non-empty string per coefficient channel.")
+    if len(set(labels)) != len(labels):
+        raise ModeBCodecError("channel_labels must be unique.")
+    return tuple(labels)
 
 
 def serialize_basis_config(basis: Any) -> Dict[str, Any]:
@@ -211,7 +268,11 @@ def _partition_settings(local_decomposition: Any, override: Any) -> Dict[str, An
     return {"overlap_ratio": 0.33, "separable": True}
 
 
-def _serialize_patch(patch: Any, patch_id: int, expected_channels: int) -> Dict[str, Any]:
+def _serialize_patch(
+    patch: Any,
+    patch_id: int,
+    expected_channels: int,
+) -> Tuple[Dict[str, Any], _ModeBPatchParts]:
     if isinstance(patch, LocalPatch):
         bounds = patch.bounds
         basis = patch.basis
@@ -246,14 +307,24 @@ def _serialize_patch(patch: Any, patch_id: int, expected_channels: int) -> Dict[
     error_value = _finite_float(error, f"local_patches[{patch_id}].error")
     if error_value < 0.0:
         raise ModeBCodecError(f"local_patches[{patch_id}].error must be non-negative.")
-    return {
+    bounds_value = _bounds(bounds, f"local_patches[{patch_id}].bounds")
+    serialized = {
         "patch_id": patch_id,
-        "bounds": [float(value) for value in _bounds(bounds, f"local_patches[{patch_id}].bounds")],
+        "bounds": [float(value) for value in bounds_value],
         "basis": basis_config,
         "coefficients": coefficient_array.tolist(),
         "coefficient_dimensions": dimensions,
         "error": error_value,
     }
+    return serialized, _ModeBPatchParts(
+        patch_id=patch_id,
+        bounds=bounds_value,
+        basis_config=basis_config,
+        basis=basis_object,
+        coefficients=coefficient_array,
+        coefficient_dimensions=dimensions,
+        error=error_value,
+    )
 
 
 def _global_metadata(global_model: Mapping) -> Dict[str, Any]:
@@ -269,6 +340,18 @@ def _global_metadata(global_model: Mapping) -> Dict[str, Any]:
         except (TypeError, ValueError) as exc:
             raise ModeBCodecError(f"global_model.{key} must be numeric.") from exc
         metadata[key] = value if math.isfinite(value) else None
+    return metadata
+
+
+def _validated_global_metadata(value: Any) -> Mapping:
+    metadata = _mapping(value, "global_metadata")
+    for key in ("type", "formula"):
+        if key in metadata and metadata[key] is not None and not isinstance(metadata[key], str):
+            raise ModeBCodecError(f"global_metadata.{key} must be a string.")
+    for key in ("degree", "fourier_freq", "basis_terms_count", "condition_number", "complexity"):
+        if key not in metadata or metadata[key] is None:
+            continue
+        _finite_float(metadata[key], f"global_metadata.{key}")
     return metadata
 
 
@@ -299,11 +382,7 @@ def serialize_mode_b_model(
     if channel_labels is None:
         defaults = {1: ["Y"], 3: ["R", "G", "B"], 4: ["R", "G", "B", "A"]}
         channel_labels = defaults.get(channel_count, [f"channel_{index}" for index in range(channel_count)])
-    labels = _sequence(channel_labels, "channel_labels")
-    if len(labels) != channel_count or any(not isinstance(label, str) or not label for label in labels):
-        raise ModeBCodecError("channel_labels must contain one non-empty string per coefficient channel.")
-    if len(set(labels)) != len(labels):
-        raise ModeBCodecError("channel_labels must be unique.")
+    labels = _channel_labels(channel_labels, channel_count)
 
     if isinstance(local_decomposition, Mapping):
         patches = local_decomposition.get("patches", [])
@@ -312,8 +391,16 @@ def serialize_mode_b_model(
     else:
         patches = local_decomposition
     patch_items = _sequence(patches, "local_patches")
+    serialized_patches: List[Dict[str, Any]] = []
+    patch_parts: List[_ModeBPatchParts] = []
+    for index, patch in enumerate(patch_items):
+        serialized, parts = _serialize_patch(patch, index, channel_count)
+        serialized_patches.append(serialized)
+        patch_parts.append(parts)
 
-    return {
+    metadata = _global_metadata(model)
+    partition_data = _partition_settings(local_decomposition, partition)
+    payload: Dict[str, Any] = {
         "codec_version": MODEL_CODEC_VERSION,
         "global_basis": {
             "type": "hybrid_chebyshev_fourier",
@@ -324,16 +411,30 @@ def serialize_mode_b_model(
         "coefficients": coefficients.tolist(),
         "coefficient_dimensions": dimensions,
         "channel_labels": list(labels),
-        "global_metadata": _global_metadata(model),
-        "partition_of_unity": _partition_settings(local_decomposition, partition),
-        "local_patches": [
-            _serialize_patch(patch, index, channel_count) for index, patch in enumerate(patch_items)
-        ],
+        "global_metadata": metadata,
+        "partition_of_unity": partition_data,
+        "local_patches": serialized_patches,
     }
+    parts = _ModeBParts(
+        payload=payload,
+        chebyshev_config=chebyshev_config,
+        fourier_config=fourier_config,
+        chebyshev=chebyshev,
+        fourier=fourier,
+        include_fourier_dc=include_fourier_dc,
+        expected_terms=expected_terms,
+        coefficients=coefficients,
+        coefficient_dimensions=dimensions,
+        channel_count=channel_count,
+        channel_labels=labels,
+        global_metadata=metadata,
+        partition=partition_data,
+        patches=tuple(patch_parts),
+    )
+    return _ValidatedModeBPayload(payload, parts)
 
 
-def deserialize_mode_b_model(data: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """Validate a codec payload and restore real basis and LocalPatch objects."""
+def _parse_mode_b_payload(data: Any) -> _ModeBParts:
     payload = _mapping(data, "mode_b_model")
     if payload.get("codec_version") != MODEL_CODEC_VERSION:
         raise ModeBCodecError(
@@ -343,8 +444,10 @@ def deserialize_mode_b_model(data: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]
     global_basis = _mapping(payload.get("global_basis"), "global_basis")
     if global_basis.get("type") != "hybrid_chebyshev_fourier":
         raise ModeBCodecError("global_basis.type must be 'hybrid_chebyshev_fourier'.")
-    chebyshev = deserialize_basis_config(global_basis.get("chebyshev"))
-    fourier = deserialize_basis_config(global_basis.get("fourier"))
+    chebyshev_config = _mapping(global_basis.get("chebyshev"), "global_basis.chebyshev")
+    fourier_config = _mapping(global_basis.get("fourier"), "global_basis.fourier")
+    chebyshev = deserialize_basis_config(chebyshev_config)
+    fourier = deserialize_basis_config(fourier_config)
     include_fourier_dc = _boolean(global_basis.get("include_fourier_dc"), "global_basis.include_fourier_dc")
     expected_terms = chebyshev.num_terms + fourier.num_terms - (0 if include_fourier_dc else 1)
     coefficients, dimensions = _coefficient_array(payload.get("coefficients"), expected_terms, "coefficients")
@@ -352,35 +455,20 @@ def deserialize_mode_b_model(data: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]
     if stored_dimensions != dimensions:
         raise ModeBCodecError("coefficient_dimensions does not match the coefficient array shape.")
     channel_count = 1 if dimensions == 1 else coefficients.shape[1]
-
-    labels = _sequence(payload.get("channel_labels"), "channel_labels")
-    if len(labels) != channel_count or any(not isinstance(label, str) or not label for label in labels):
-        raise ModeBCodecError("channel_labels must contain one non-empty string per coefficient channel.")
-    if len(set(labels)) != len(labels):
-        raise ModeBCodecError("channel_labels must be unique.")
-
-    metadata = dict(_mapping(payload.get("global_metadata", {}), "global_metadata"))
-    global_model = metadata
-    global_model["type"] = metadata.get("type", "mode_b_global_hybrid")
-    global_model["degree"] = int(chebyshev.deg_x)
-    global_model["fourier_freq"] = int(fourier.freq_x)
-    global_model["basis_terms_count"] = expected_terms
-    global_model["include_fourier_dc"] = include_fourier_dc
-    global_model["chebyshev_basis"] = chebyshev
-    global_model["fourier_basis"] = fourier
-    global_model["coefficients"] = coefficients
-    global_model["channel_labels"] = list(labels)
+    labels = _channel_labels(payload.get("channel_labels"), channel_count)
+    metadata = _validated_global_metadata(payload.get("global_metadata", {}))
 
     partition = _mapping(payload.get("partition_of_unity"), "partition_of_unity")
     partition_data = _partition_settings({"partition_of_unity": partition}, None)
     raw_patches = _sequence(payload.get("local_patches"), "local_patches")
-    patches: List[LocalPatch] = []
+    patches: List[_ModeBPatchParts] = []
     for index, raw_patch in enumerate(raw_patches):
         patch = _mapping(raw_patch, f"local_patches[{index}]")
         patch_id = _integer(patch.get("patch_id", index), f"local_patches[{index}].patch_id")
         if patch_id != index:
             raise ModeBCodecError("local patch IDs must be contiguous and match their array order.")
-        basis = deserialize_basis_config(patch.get("basis"))
+        basis_config = _mapping(patch.get("basis"), f"local_patches[{index}].basis")
+        basis = deserialize_basis_config(basis_config)
         patch_coefficients, patch_dimensions = _coefficient_array(
             patch.get("coefficients"),
             basis.num_terms,
@@ -402,25 +490,81 @@ def deserialize_mode_b_model(data: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]
         if error < 0.0:
             raise ModeBCodecError(f"local_patches[{index}].error must be non-negative.")
         patches.append(
-            LocalPatch(
+            _ModeBPatchParts(
+                patch_id=patch_id,
                 bounds=_bounds(patch.get("bounds"), f"local_patches[{index}].bounds"),
+                basis_config=basis_config,
                 basis=basis,
                 coefficients=patch_coefficients,
+                coefficient_dimensions=patch_dimensions,
                 error=error,
+            )
+        )
+
+    return _ModeBParts(
+        payload=payload,
+        chebyshev_config=chebyshev_config,
+        fourier_config=fourier_config,
+        chebyshev=chebyshev,
+        fourier=fourier,
+        include_fourier_dc=include_fourier_dc,
+        expected_terms=expected_terms,
+        coefficients=coefficients,
+        coefficient_dimensions=dimensions,
+        channel_count=channel_count,
+        channel_labels=labels,
+        global_metadata=metadata,
+        partition=partition_data,
+        patches=tuple(patches),
+    )
+
+
+def _validated_mode_b_payload(data: Any) -> _ValidatedModeBPayload:
+    if isinstance(data, _ValidatedModeBPayload):
+        return data
+    parts = _parse_mode_b_payload(data)
+    return _ValidatedModeBPayload(parts.payload, parts)
+
+
+def deserialize_mode_b_model(data: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Validate a codec payload and restore real basis and LocalPatch objects."""
+    trusted = _validated_mode_b_payload(data)
+    parts = trusted._parts
+    chebyshev = deserialize_basis_config(parts.chebyshev_config)
+    fourier = deserialize_basis_config(parts.fourier_config)
+    global_model = dict(parts.global_metadata)
+    global_model["type"] = parts.global_metadata.get("type", "mode_b_global_hybrid")
+    global_model["degree"] = int(chebyshev.deg_x)
+    global_model["fourier_freq"] = int(fourier.freq_x)
+    global_model["basis_terms_count"] = parts.expected_terms
+    global_model["include_fourier_dc"] = parts.include_fourier_dc
+    global_model["chebyshev_basis"] = chebyshev
+    global_model["fourier_basis"] = fourier
+    global_model["coefficients"] = np.array(parts.coefficients, dtype=np.float64, copy=True)
+    global_model["channel_labels"] = list(parts.channel_labels)
+
+    patches: List[LocalPatch] = []
+    for patch in parts.patches:
+        patches.append(
+            LocalPatch(
+                bounds=patch.bounds,
+                basis=deserialize_basis_config(patch.basis_config),
+                coefficients=np.array(patch.coefficients, dtype=np.float64, copy=True),
+                error=patch.error,
             )
         )
 
     local_decomposition = {
         "patches": patches,
         "leaves_count": len(patches),
-        "partition_of_unity": partition_data,
+        "partition_of_unity": dict(parts.partition),
     }
     return global_model, local_decomposition
 
 
 def validate_mode_b_model(data: Any) -> None:
-    """Validate a codec payload at a persistence boundary."""
-    deserialize_mode_b_model(data)
+    """Validate a codec payload at a persistence boundary without rebuilding the model."""
+    _validated_mode_b_payload(data)
 
 
 def is_mode_b_global_model(model: Any) -> bool:
@@ -438,9 +582,7 @@ def mode_b_payload_from_result(result: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(result, Mapping):
         return None
     if result.get("mode_b_model") is not None:
-        payload = copy.deepcopy(result["mode_b_model"])
-        validate_mode_b_model(payload)
-        return payload
+        return _validated_mode_b_payload(result["mode_b_model"])
 
     global_model = result.get("global_model")
     if not is_mode_b_global_model(global_model):
@@ -464,12 +606,10 @@ def mode_b_payload_from_result(result: Any) -> Optional[Dict[str, Any]]:
     )
 
 
-def mode_b_parameter_table(payload: Any) -> Dict[str, Any]:
-    """Build named global and per-patch coefficient records for every channel."""
-    validate_mode_b_model(payload)
-    coefficients = np.asarray(payload["coefficients"], dtype=np.float64)
+def _mode_b_parameter_table(parts: _ModeBParts) -> Dict[str, Any]:
+    coefficients = parts.coefficients
     matrix = coefficients.reshape(-1, 1) if coefficients.ndim == 1 else coefficients
-    labels = list(payload["channel_labels"])
+    labels = parts.channel_labels
     parameters: Dict[str, Any] = {}
     for channel_index, label in enumerate(labels):
         for term_index, value in enumerate(matrix[:, channel_index]):
@@ -478,10 +618,10 @@ def mode_b_parameter_table(payload: Any) -> Dict[str, Any]:
                 "channel": label,
                 "value": float(value),
             }
-    for patch_index, patch in enumerate(payload["local_patches"]):
-        patch_coefficients = np.asarray(patch["coefficients"], dtype=np.float64)
+    for patch_index, patch in enumerate(parts.patches):
+        patch_coefficients = patch.coefficients
         patch_matrix = patch_coefficients.reshape(-1, 1) if patch_coefficients.ndim == 1 else patch_coefficients
-        bounds = patch["bounds"]
+        bounds = patch.bounds
         domain = f"[{bounds[0]:.17g}, {bounds[2]:.17g}]x[{bounds[1]:.17g}, {bounds[3]:.17g}]"
         for channel_index, label in enumerate(labels):
             for term_index, value in enumerate(patch_matrix[:, channel_index]):
@@ -495,14 +635,78 @@ def mode_b_parameter_table(payload: Any) -> Dict[str, Any]:
     return parameters
 
 
-def mode_b_channel_records(payload: Any, formulas: Optional[Mapping[str, Any]] = None) -> List[Dict[str, Any]]:
-    """Build complete per-channel project records from a Mode B payload."""
-    validate_mode_b_model(payload)
-    coefficients = np.asarray(payload["coefficients"], dtype=np.float64)
+def mode_b_parameter_table(payload: Any) -> Dict[str, Any]:
+    """Build named global and per-patch coefficient records for every channel."""
+    return _mode_b_parameter_table(_validated_mode_b_payload(payload)._parts)
+
+
+def _chebyshev_expression(order: int, variable: str) -> str:
+    if order <= 0:
+        return "1"
+    if order == 1:
+        return variable
+    previous, current = "1", variable
+    for _ in range(2, order + 1):
+        previous, current = current, f"(2*{variable}*{current} - {previous})"
+    return current
+
+
+def _mode_b_machine_formula(parts: _ModeBParts, channel_index: int) -> str:
+    coefficients = parts.coefficients
+    channel_coefficients = coefficients[:, channel_index] if coefficients.ndim == 2 else coefficients
+    terms: List[Tuple[float, str]] = []
+    for term_index, (degree_x, degree_y) in enumerate(parts.chebyshev.indices):
+        value = float(channel_coefficients[term_index])
+        if abs(value) <= 0.0:
+            continue
+        if degree_x == 0 and degree_y == 0:
+            name = "1"
+        elif degree_y == 0:
+            name = f"({_chebyshev_expression(int(degree_x), 'x')})"
+        elif degree_x == 0:
+            name = f"({_chebyshev_expression(int(degree_y), 'y')})"
+        else:
+            name = (
+                f"({_chebyshev_expression(int(degree_x), 'x')})"
+                f"*({_chebyshev_expression(int(degree_y), 'y')})"
+            )
+        terms.append((abs(value), f"{value:+.17g}*{name}"))
+
+    base = parts.chebyshev.num_terms
+    for harmonic_index, (frequency_x, frequency_y) in enumerate(parts.fourier.freq_pairs):
+        cosine = float(channel_coefficients[base + 2 * harmonic_index])
+        sine = float(channel_coefficients[base + 2 * harmonic_index + 1])
+        argument = f"({int(frequency_x)}*pi*x" if frequency_x else "("
+        if frequency_y:
+            argument += f" + {int(frequency_y)}*pi*y)" if frequency_x else f"{int(frequency_y)}*pi*y)"
+        else:
+            argument += ")"
+        for value, function in ((cosine, "cos"), (sine, "sin")):
+            if abs(value) > 0.0:
+                terms.append((abs(value), f"{value:+.17g}*{function}{argument}"))
+
+    terms.sort(key=lambda item: item[0], reverse=True)
+    return " ".join(text for _, text in terms) or "0.0"
+
+
+def mode_b_machine_formulas(payload: Any) -> Dict[str, str]:
+    """Regenerate machine channel equations from canonical coefficients."""
+    parts = _validated_mode_b_payload(payload)._parts
+    return {
+        label: _mode_b_machine_formula(parts, channel_index)
+        for channel_index, label in enumerate(parts.channel_labels)
+    }
+
+
+def _mode_b_channel_records(
+    parts: _ModeBParts,
+    formulas: Optional[Mapping[str, Any]],
+) -> List[Dict[str, Any]]:
+    coefficients = parts.coefficients
     matrix = coefficients.reshape(-1, 1) if coefficients.ndim == 1 else coefficients
     formulas = formulas or {}
     records: List[Dict[str, Any]] = []
-    for channel_index, label in enumerate(payload["channel_labels"]):
+    for channel_index, label in enumerate(parts.channel_labels):
         records.append(
             {
                 "channel": label,
@@ -511,3 +715,60 @@ def mode_b_channel_records(payload: Any, formulas: Optional[Mapping[str, Any]] =
             }
         )
     return records
+
+
+def mode_b_channel_records(payload: Any, formulas: Optional[Mapping[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Build complete per-channel project records from a Mode B payload."""
+    if formulas is not None and not isinstance(formulas, Mapping):
+        raise ModeBCodecError("formulas must be an object keyed by channel label.")
+    return _mode_b_channel_records(_validated_mode_b_payload(payload)._parts, formulas)
+
+
+def mode_b_channel_formulas(payload: Any, formulas: Optional[Mapping[str, Any]] = None) -> Dict[str, str]:
+    """Return deterministic per-channel formula metadata without copying coefficients."""
+    if formulas is not None and not isinstance(formulas, Mapping):
+        raise ModeBCodecError("formulas must be an object keyed by channel label.")
+    parts = _validated_mode_b_payload(payload)._parts
+    formulas = formulas or {}
+    channel_formulas: Dict[str, str] = {}
+    for label in parts.channel_labels:
+        value = formulas.get(label)
+        channel_formulas[label] = (
+            f"hybrid_chebyshev_fourier_channel_{label}" if value is None else str(value)
+        )
+    return channel_formulas
+
+
+def mode_b_legacy_views(
+    payload: Any,
+    formulas: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Derive compatibility views only when a consumer explicitly needs them."""
+    if formulas is not None and not isinstance(formulas, Mapping):
+        raise ModeBCodecError("formulas must be an object keyed by channel label.")
+    trusted = _validated_mode_b_payload(payload)
+    parts = trusted._parts
+    global_model = dict(parts.global_metadata)
+    global_model["type"] = parts.global_metadata.get("type", "mode_b_global_hybrid")
+    global_model["degree"] = int(parts.chebyshev.deg_x)
+    global_model["fourier_freq"] = int(parts.fourier.freq_x)
+    global_model["basis_terms_count"] = parts.expected_terms
+    global_model["include_fourier_dc"] = parts.include_fourier_dc
+    global_model["chebyshev_basis"] = parts.chebyshev_config
+    global_model["fourier_basis"] = parts.fourier_config
+    global_model["coefficients"] = parts.payload["coefficients"]
+    global_model["channel_labels"] = list(parts.channel_labels)
+    global_model["channels"] = _mode_b_channel_records(parts, formulas)
+    global_model["local_patches_count"] = len(parts.patches)
+    local_patches = parts.payload["local_patches"]
+    return {
+        "global_model": global_model,
+        "parameters": _mode_b_parameter_table(parts),
+        "local_patches": local_patches,
+        "local_decomposition": {
+            "patches": local_patches,
+            "leaves_count": len(parts.patches),
+            "partition_of_unity": dict(parts.partition),
+        },
+        "basis_terms_count": parts.expected_terms,
+    }

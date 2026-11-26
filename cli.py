@@ -21,15 +21,14 @@ from PIL import Image
 
 from mathfield.core.domain import CoordinateDomain2D, DomainMode
 from mathfield.core.model_codec import (
-    mode_b_channel_records,
-    mode_b_parameter_table,
+    mode_b_legacy_views,
     serialize_mode_b_model,
 )
 from mathfield.core.pipeline.controller import ReconstructionController
 from mathfield.export.csv_export import export_csv_parameters
 from mathfield.export.latex_report import export_latex_report
 from mathfield.export.pdf_report import export_pdf_report
-from mathfield.export.project_file import save_project
+from mathfield.export.project_file import build_mode_b_project, save_project
 from mathfield.export.raster import export_jpg, export_png
 from mathfield.export.svg import export_svg
 
@@ -348,29 +347,16 @@ def main(argv: List[str] | None = None) -> int:
         mode_expr["formula"] = (
             f"chebyshev2d_deg_{raw_global_model.get('degree', 6)} + fourier2d_harmonics + local_patches"
         )
-        global_model = dict(raw_global_model)
-        global_model.update(mode_b_payload["global_metadata"])
-        global_model["chebyshev_basis"] = mode_b_payload["global_basis"]["chebyshev"]
-        global_model["fourier_basis"] = mode_b_payload["global_basis"]["fourier"]
-        global_model["include_fourier_dc"] = mode_b_payload["global_basis"]["include_fourier_dc"]
-        global_model["coefficients"] = mode_b_payload["coefficients"]
-        global_model["channel_labels"] = mode_b_payload["channel_labels"]
-        global_model["channels"] = mode_b_channel_records(mode_b_payload, mode_expr)
-        global_model["local_patches_count"] = len(mode_b_payload["local_patches"])
-        parameters_dict = mode_b_parameter_table(mode_b_payload)
+        legacy_views = mode_b_legacy_views(mode_b_payload, mode_expr)
+        global_model = legacy_views["global_model"]
+        parameters_dict = legacy_views["parameters"]
 
     # Format local decomposition without reducing patches to bounds only.
     local_decomp_data: Dict[str, Any] = {}
     local_patches_list: List[Any] = []
     if mode_b_payload is not None:
-        local_patches_list = mode_b_payload["local_patches"]
-        local_decomp_data = {
-            "leaves_count": int(
-                context.local_decomposition.get("leaves_count", len(local_patches_list))
-            ) if context.local_decomposition else len(local_patches_list),
-            "patches": local_patches_list,
-            "partition_of_unity": mode_b_payload["partition_of_unity"],
-        }
+        local_patches_list = legacy_views["local_patches"]
+        local_decomp_data = legacy_views["local_decomposition"]
     elif context.local_decomposition:
         actual_patches = context.local_decomposition.get("patches") or []
         local_decomp_data["leaves_count"] = int(
@@ -383,34 +369,48 @@ def main(argv: List[str] | None = None) -> int:
         ]
         local_patches_list = local_decomp_data["patches"]
 
-    proj_dict: Dict[str, Any] = {
-        "schema_version": "1.0.0",
-        "project_name": "MathField",
-        "coordinate_domain": {
-            "x_min": float(domain.x_min),
-            "x_max": float(domain.x_max),
-            "y_min": float(domain.y_min),
-            "y_max": float(domain.y_max),
-            "pixel_width": int(w),
-            "pixel_height": int(h),
-            "aspect_ratio": float(w / h),
-        },
-        "color_space": color_space,
-        "mode": "MODE_A_DISCOVERY" if is_mode_a else "MODE_B_FIDELITY",
-        "global_model": global_model,
-        "local_decomposition": local_decomp_data if local_decomp_data else None,
-        "local_patches": local_patches_list,
-        "final_metrics": metrics,
-        "parameters": parameters_dict,
-        "basis_terms_count": int(global_model.get("basis_terms_count", len(parameters_dict))),
-        "random_seed": args.seed,
-        "status": "COMPLETED",
+    coordinate_domain = {
+        "x_min": float(domain.x_min),
+        "x_max": float(domain.x_max),
+        "y_min": float(domain.y_min),
+        "y_max": float(domain.y_max),
+        "pixel_width": int(w),
+        "pixel_height": int(h),
+        "aspect_ratio": float(w / h),
     }
     if mode_b_payload is not None:
-        proj_dict["mode_b_model"] = mode_b_payload
-
-    if context.condition_report:
-        proj_dict["condition_report"] = context.condition_report
+        proj_dict = build_mode_b_project(
+            {
+                "coordinate_domain": coordinate_domain,
+                "color_space": color_space,
+                "mode": "MODE_B_FIDELITY",
+                "global_model": global_model,
+                "expressions": mode_expr,
+                "mode_b_model": mode_b_payload,
+                "metrics": metrics,
+                "random_seed": args.seed,
+                "status": "COMPLETED",
+                "condition_report": context.condition_report,
+            }
+        )
+    else:
+        proj_dict = {
+            "schema_version": "1.0.0",
+            "project_name": "MathField",
+            "coordinate_domain": coordinate_domain,
+            "color_space": color_space,
+            "mode": "MODE_A_DISCOVERY",
+            "global_model": global_model,
+            "local_decomposition": local_decomp_data if local_decomp_data else None,
+            "local_patches": local_patches_list,
+            "final_metrics": metrics,
+            "parameters": parameters_dict,
+            "basis_terms_count": int(global_model.get("basis_terms_count", len(parameters_dict))),
+            "random_seed": args.seed,
+            "status": "COMPLETED",
+        }
+        if context.condition_report:
+            proj_dict["condition_report"] = context.condition_report
 
     # Always write or if requested --export-json
     proj_path = out_dir / "mathfield_out.mathfield"
@@ -439,7 +439,7 @@ def main(argv: List[str] | None = None) -> int:
         export_result["local_decomposition"] = local_decomp_data
         export_result["local_patches"] = local_patches_list
         export_result["partition_of_unity"] = mode_b_payload["partition_of_unity"]
-        export_result["basis_terms_count"] = proj_dict["basis_terms_count"]
+        export_result["basis_terms_count"] = legacy_views["basis_terms_count"]
         export_result["status"] = proj_dict["status"]
     if context.condition_report:
         export_result["condition_report"] = context.condition_report

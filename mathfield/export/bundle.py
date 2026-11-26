@@ -18,14 +18,13 @@ from typing import Any, Dict, Union
 import numpy as np
 
 from mathfield.core.model_codec import (
-    mode_b_channel_records,
     mode_b_parameter_table,
     mode_b_payload_from_result,
 )
 from mathfield.export.csv_export import export_csv_parameters
 from mathfield.export.latex_report import export_latex_report
 from mathfield.export.pdf_report import export_pdf_report
-from mathfield.export.project_file import save_project
+from mathfield.export.project_file import build_mode_b_project, save_project
 from mathfield.export.python_script import export_standalone_script
 from mathfield.export.raster import _model_to_image, to_uint8_array
 
@@ -149,70 +148,61 @@ if __name__ == "__main__":
             param_values = [float(v) for v in raw_params]
         if mode_b_payload is not None:
             raw_params = mode_b_parameter_table(mode_b_payload)
-        # Ensure project dictionary conforms to schema
-        proj_dict = {
-            "schema_version": "1.0.0",
-            "project_name": "MathField_Reconstruction",
-            "coordinate_domain": result.get(
-                "coordinate_domain",
-                {
-                    "x_min": -1.0,
-                    "x_max": 1.0,
-                    "y_min": -1.0,
-                    "y_max": 1.0,
-                    "pixel_width": width,
-                    "pixel_height": height,
-                    "aspect_ratio": float(width / height),
-                },
-            ),
-            "color_space": result.get("color_space", "RGB"),
-            "mode": result.get("mode", "MODE_B_FIDELITY" if mode_b_payload is not None else "MODE_A_DISCOVERY"),
-            "global_model": result.get(
-                "global_model",
-                {
-                    "channels": [
-                        {
-                            "channel": "RGB",
-                            "formula": result.get("expressions", {}).get("formula", "0"),
-                            "parameters": param_values,
-                        }
-                    ]
-                },
-            ),
-            "local_patches": result.get("local_patches", []),
-            "final_metrics": metrics,
-            "random_seed": int(result.get("random_seed", 42)),
-        }
-        if mode_b_payload is not None:
-            global_model = dict(result.get("global_model") or {})
-            global_model["chebyshev_basis"] = mode_b_payload["global_basis"]["chebyshev"]
-            global_model["fourier_basis"] = mode_b_payload["global_basis"]["fourier"]
-            global_model["include_fourier_dc"] = mode_b_payload["global_basis"]["include_fourier_dc"]
-            global_model["coefficients"] = mode_b_payload["coefficients"]
-            global_model["channel_labels"] = mode_b_payload["channel_labels"]
-            channel_records = global_model.get("channels") or []
-            recorded_labels = [record.get("channel") for record in channel_records if isinstance(record, dict)]
-            if recorded_labels != mode_b_payload["channel_labels"]:
-                global_model["channels"] = mode_b_channel_records(mode_b_payload, result.get("expressions"))
-            global_model["local_patches_count"] = len(mode_b_payload["local_patches"])
-            proj_dict["basis_terms_count"] = int(
-                global_model.get("basis_terms_count", np.asarray(mode_b_payload["coefficients"]).shape[0])
-            )
-            proj_dict["global_model"] = global_model
-            proj_dict["mode_b_model"] = mode_b_payload
-            proj_dict["local_patches"] = mode_b_payload["local_patches"]
-            local_decomposition = dict(result.get("local_decomposition") or {})
-            local_decomposition["leaves_count"] = len(mode_b_payload["local_patches"])
-            local_decomposition["patches"] = mode_b_payload["local_patches"]
-            local_decomposition["partition_of_unity"] = mode_b_payload["partition_of_unity"]
-            proj_dict["local_decomposition"] = local_decomposition
-        proj_dict["parameters"] = raw_params
-        if "basis_terms_count" in result:
-            proj_dict["basis_terms_count"] = result["basis_terms_count"]
-        if "condition_report" in result:
-            proj_dict["condition_report"] = result["condition_report"]
-        if "status" in result:
-            proj_dict["status"] = result["status"]
+            domain_data = result.get("coordinate_domain") or {
+                "x_min": -1.0,
+                "x_max": 1.0,
+                "y_min": -1.0,
+                "y_max": 1.0,
+                "pixel_width": width,
+                "pixel_height": height,
+                "aspect_ratio": float(width / height),
+            }
+            project_result = dict(result)
+            project_result["coordinate_domain"] = domain_data
+            project_result["metrics"] = metrics
+            project_result["mode_b_model"] = mode_b_payload
+            proj_dict = build_mode_b_project(project_result)
+        else:
+            proj_dict = {
+                "schema_version": "1.0.0",
+                "project_name": "MathField_Reconstruction",
+                "coordinate_domain": result.get(
+                    "coordinate_domain",
+                    {
+                        "x_min": -1.0,
+                        "x_max": 1.0,
+                        "y_min": -1.0,
+                        "y_max": 1.0,
+                        "pixel_width": width,
+                        "pixel_height": height,
+                        "aspect_ratio": float(width / height),
+                    },
+                ),
+                "color_space": result.get("color_space", "RGB"),
+                "mode": result.get("mode", "MODE_A_DISCOVERY"),
+                "global_model": result.get(
+                    "global_model",
+                    {
+                        "channels": [
+                            {
+                                "channel": "RGB",
+                                "formula": result.get("expressions", {}).get("formula", "0"),
+                                "parameters": param_values,
+                            }
+                        ]
+                    },
+                ),
+                "local_patches": result.get("local_patches", []),
+                "final_metrics": metrics,
+                "parameters": raw_params,
+                "random_seed": int(result.get("random_seed", 42)),
+            }
+            if "basis_terms_count" in result:
+                proj_dict["basis_terms_count"] = result["basis_terms_count"]
+            if "condition_report" in result:
+                proj_dict["condition_report"] = result["condition_report"]
+            if "status" in result:
+                proj_dict["status"] = result["status"]
         save_project(proj_dict, project_path)
 
         # 4. parameters.csv
@@ -222,16 +212,18 @@ if __name__ == "__main__":
         export_csv_parameters(csv_result, csv_path)
 
         # 5. report.pdf (invariant mode avoids embedded timestamps/IDs)
+        report_result = dict(result)
+        report_result["parameters"] = raw_params
         from reportlab import rl_config
 
         previous_invariant = rl_config.invariant
         rl_config.invariant = 1
         pdf_path = temp_dir / "report.pdf"
-        export_pdf_report(result, pdf_path)
+        export_pdf_report(report_result, pdf_path)
 
         # 6. report.tex
         tex_path = temp_dir / "report.tex"
-        export_latex_report(result, tex_path)
+        export_latex_report(report_result, tex_path)
 
         # 7. README.md
         readme_path = temp_dir / "README.md"

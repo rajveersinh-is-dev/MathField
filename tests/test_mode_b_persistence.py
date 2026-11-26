@@ -16,6 +16,7 @@ import pytest
 from PIL import Image
 
 import cli
+from mathfield.core import model_codec
 from mathfield.core.ast.parser import parse
 from mathfield.core.basis.fourier import DCT2Basis, Fourier2D
 from mathfield.core.basis.polynomial import Chebyshev2D
@@ -27,11 +28,22 @@ from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
 from mathfield.core.model_codec import (
     ModeBCodecError,
     deserialize_mode_b_model,
+    mode_b_channel_formulas,
+    mode_b_channel_records,
+    mode_b_legacy_views,
+    mode_b_parameter_table,
+    mode_b_payload_from_result,
     serialize_mode_b_model,
 )
 from mathfield.core.pipeline.mode_b import ModeBPipeline
 from mathfield.core.pipeline.stage import PipelineContext, StageStatus
-from mathfield.export.project_file import ProjectFileError, load_project, save_project
+from mathfield.export import bundle as bundle_export
+from mathfield.export.project_file import (
+    ProjectFileError,
+    build_mode_b_project,
+    load_project,
+    save_project,
+)
 from mathfield.export.python_script import export_standalone_script
 
 
@@ -144,6 +156,63 @@ def _mode_b_context() -> PipelineContext:
     return context
 
 
+def _mode_b_project_result(payload, formulas=None):
+    labels = list(payload["channel_labels"])
+    return {
+        "coordinate_domain": {
+            "x_min": -1.0,
+            "x_max": 1.0,
+            "y_min": -1.0,
+            "y_max": 1.0,
+            "pixel_width": 16,
+            "pixel_height": 4,
+            "aspect_ratio": 4.0,
+        },
+        "color_space": "RGBA" if labels == list("RGBA") else "RGB",
+        "mode": "MODE_B_FIDELITY",
+        "mode_b_model": payload,
+        "expressions": formulas or {label: f"formula_{label}" for label in labels},
+        "metrics": {"mse": 0.001, "psnr": 30.0, "ssim": 0.95},
+        "random_seed": 7,
+        "status": "COMPLETED",
+    }
+
+
+def _synthetic_default_global_payload():
+    chebyshev = Chebyshev2D(deg_x=6, deg_y=6, truncation="total_degree")
+    fourier = Fourier2D(freq_x=12, freq_y=12, truncation="rectangular")
+    term_count = chebyshev.num_terms + fourier.num_terms - 1
+    rng = np.random.default_rng(42)
+    global_coefficients = rng.random((term_count, 3), dtype=np.float64)
+    patches = [
+        LocalPatch(
+            bounds=(-1.0 + column / 4.0, -1.0 + row / 4.0, -0.75 + column / 4.0, -0.75 + row / 4.0),
+            basis=DCT2Basis(freq_x=8, freq_y=8),
+            coefficients=rng.random((81, 3), dtype=np.float64),
+            error=0.0,
+        )
+        for row in range(8)
+        for column in range(8)
+    ]
+    payload = serialize_mode_b_model(
+        {
+            "type": "mode_b_global_hybrid",
+            "degree": 6,
+            "fourier_freq": 12,
+            "basis_terms_count": term_count,
+            "condition_number": 1.0,
+            "coefficients": global_coefficients,
+            "chebyshev_basis": chebyshev,
+            "fourier_basis": fourier,
+        },
+        {"patches": patches},
+        channel_labels=list("RGB"),
+        partition={"overlap_ratio": 0.2, "separable": True},
+    )
+    assert len(payload["coefficients"]) * 3 + len(patches) * 81 * 3 == 17_508
+    return payload
+
+
 def test_mode_b_project_checkpoint_bundle_and_standalone_roundtrip(tmp_path: Path, monkeypatch) -> None:
     context = _mode_b_context()
     expected = context.rendered_image
@@ -154,6 +223,20 @@ def test_mode_b_project_checkpoint_bundle_and_standalone_roundtrip(tmp_path: Pat
             return context
 
     monkeypatch.setattr(cli, "ReconstructionController", FakeController)
+    report_parameter_inputs = []
+    original_pdf_export = bundle_export.export_pdf_report
+    original_latex_export = bundle_export.export_latex_report
+
+    def capture_pdf_parameters(result, path):
+        report_parameter_inputs.append(copy.deepcopy(result["parameters"]))
+        return original_pdf_export(result, path)
+
+    def capture_latex_parameters(result, path):
+        report_parameter_inputs.append(copy.deepcopy(result["parameters"]))
+        return original_latex_export(result, path)
+
+    monkeypatch.setattr(bundle_export, "export_pdf_report", capture_pdf_parameters)
+    monkeypatch.setattr(bundle_export, "export_latex_report", capture_latex_parameters)
     input_path = tmp_path / "rgba.png"
     Image.fromarray((expected * 255.0).astype(np.uint8), mode="RGBA").save(input_path)
     output = tmp_path / "out"
@@ -174,7 +257,12 @@ def test_mode_b_project_checkpoint_bundle_and_standalone_roundtrip(tmp_path: Pat
         ]
     ) == 0
 
-    project = json.loads((output / "mathfield_out.mathfield").read_text(encoding="utf-8"))
+    project_path = output / "mathfield_out.mathfield"
+    raw_project = json.loads(project_path.read_text(encoding="utf-8"))
+    assert raw_project["schema_version"] == "1.1.0"
+    for redundant_key in ("global_model", "parameters", "local_patches", "local_decomposition", "basis_terms_count"):
+        assert redundant_key not in raw_project
+    project = load_project(project_path)
     payload = project["mode_b_model"]
     json.dumps(payload, allow_nan=False)
     assert payload["channel_labels"] == ["R", "G", "B", "A"]
@@ -215,9 +303,14 @@ def test_mode_b_project_checkpoint_bundle_and_standalone_roundtrip(tmp_path: Pat
     assert len(rows) == expected_parameter_count
     assert {row["channel"] for row in rows} == set("RGBA")
     assert sum(row["stage"] == "local" for row in rows) == 28
+    assert [row["parameter_name"] for row in rows] == list(project["parameters"])
     csv_values = {row["parameter_name"]: float(row["parameter_value"]) for row in rows}
     for name, record in project["parameters"].items():
         assert csv_values[name] == pytest.approx(record["value"], rel=1e-12, abs=0.0)
+    assert len(report_parameter_inputs) == 2
+    for report_parameters in report_parameter_inputs:
+        assert list(report_parameters) == list(project["parameters"])
+        assert report_parameters == project["parameters"]
 
     clone_path = tmp_path / "clone.mathfield"
     save_project(project, clone_path)
@@ -246,7 +339,9 @@ def test_mode_b_project_checkpoint_bundle_and_standalone_roundtrip(tmp_path: Pat
     np.testing.assert_allclose(_render_global_local(checkpoint_context), expected, rtol=0.0, atol=1e-10)
 
     bundle = output / "bundle"
-    bundle_project = json.loads((bundle / "project.mathfield").read_text(encoding="utf-8"))
+    bundle_project_path = bundle / "project.mathfield"
+    assert bundle_project_path.read_bytes() == project_path.read_bytes()
+    bundle_project = load_project(bundle_project_path)
     assert bundle_project["mode_b_model"] == payload
     assert bundle_project["global_model"] == project["global_model"]
     assert bundle_project["local_decomposition"] == project["local_decomposition"]
@@ -473,3 +568,189 @@ def test_mode_b_codec_validates_basis_coefficient_and_partition_shapes() -> None
     }
     with pytest.raises(ProjectFileError, match="Mode B model payload"):
         save_project(invalid_project, Path("unused.mathfield"))
+
+
+def test_mode_b_compact_and_legacy_project_roundtrips(tmp_path: Path) -> None:
+    context = _mode_b_context()
+    payload = serialize_mode_b_model(
+        context.global_model,
+        context.local_decomposition,
+        channel_labels=list("RGBA"),
+        partition={"overlap_ratio": 0.35, "separable": False},
+    )
+    formulas = {label: f"0.1 + {index} * x" for index, label in enumerate("RGBA")}
+    project = build_mode_b_project(_mode_b_project_result(payload, formulas))
+    original_project = copy.deepcopy(project)
+
+    compact_path = tmp_path / "compact.mathfield"
+    save_project(project, compact_path)
+    assert project == original_project
+    raw_compact = json.loads(compact_path.read_text(encoding="utf-8"))
+    assert raw_compact["schema_version"] == "1.1.0"
+    assert raw_compact["channel_formulas"] == formulas
+    assert "global_model" not in raw_compact
+    assert "parameters" not in raw_compact
+    assert "local_patches" not in raw_compact
+    assert "local_decomposition" not in raw_compact
+
+    loaded = load_project(compact_path)
+    assert loaded["schema_version"] == "1.1.0"
+    assert loaded["channel_formulas"] == formulas
+    assert [channel["formula"] for channel in loaded["global_model"]["channels"]] == list(formulas.values())
+    assert loaded["local_patches"] is loaded["mode_b_model"]["local_patches"]
+    assert loaded["local_decomposition"]["patches"] is loaded["mode_b_model"]["local_patches"]
+    np.testing.assert_array_equal(loaded["global_model"]["coefficients"], context.global_model["coefficients"])
+    assert list(loaded["parameters"]) == list(mode_b_parameter_table(payload))
+
+    clone_path = tmp_path / "compact_clone.mathfield"
+    save_project(loaded, clone_path)
+    assert clone_path.read_bytes() == compact_path.read_bytes()
+
+    legacy = dict(loaded)
+    legacy["schema_version"] = "1.0.0"
+    legacy.pop("channel_formulas")
+    original_legacy = copy.deepcopy(legacy)
+    legacy_path = tmp_path / "legacy.mathfield"
+    save_project(legacy, legacy_path)
+    assert legacy == original_legacy
+    raw_legacy = json.loads(legacy_path.read_text(encoding="utf-8"))
+    assert raw_legacy["schema_version"] == "1.0.0"
+    assert "parameters" in raw_legacy
+    assert "local_patches" in raw_legacy
+    assert "coefficients" in raw_legacy["global_model"]
+    assert load_project(legacy_path) == legacy
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        pytest.param(lambda data: data.pop("mode_b_model"), id="missing-model"),
+        pytest.param(lambda data: data.update(schema_version="99.0.0"), id="unsupported-schema"),
+        pytest.param(
+            lambda data: data["mode_b_model"].update(codec_version="99.0.0"),
+            id="unsupported-codec",
+        ),
+        pytest.param(
+            lambda data: data["mode_b_model"]["coefficients"].pop(),
+            id="coefficient-shape",
+        ),
+        pytest.param(
+            lambda data: data["mode_b_model"].update(coefficient_dimensions=1),
+            id="coefficient-dimensions",
+        ),
+        pytest.param(
+            lambda data: data["mode_b_model"]["global_basis"].update(include_fourier_dc="false"),
+            id="invalid-boolean",
+        ),
+        pytest.param(
+            lambda data: data["mode_b_model"]["local_patches"][0].update(patch_id=3),
+            id="patch-id-order",
+        ),
+        pytest.param(
+            lambda data: data["mode_b_model"]["local_patches"][0]["bounds"].__setitem__(2, -4.0),
+            id="patch-bounds",
+        ),
+        pytest.param(
+            lambda data: data["mode_b_model"]["local_patches"][0]["coefficients"][0].__setitem__(0, float("nan")),
+            id="nonfinite-coefficient",
+        ),
+        pytest.param(
+            lambda data: data["channel_formulas"].update(unknown="x"),
+            id="unknown-formula-channel",
+        ),
+        pytest.param(
+            lambda data: data["channel_formulas"].update(R=3),
+            id="nonstring-formula",
+        ),
+    ],
+)
+def test_compact_project_rejects_malformed_payloads_on_save_and_load(tmp_path: Path, mutation) -> None:
+    payload = serialize_mode_b_model(
+        _mode_b_context().global_model,
+        _mode_b_context().local_decomposition,
+        channel_labels=list("RGBA"),
+    )
+    project = build_mode_b_project(_mode_b_project_result(payload))
+    invalid = copy.deepcopy(project)
+    mutation(invalid)
+    target = tmp_path / "invalid.mathfield"
+
+    with pytest.raises(ProjectFileError):
+        save_project(invalid, target)
+    assert not target.exists()
+
+    target.write_text(json.dumps(invalid), encoding="utf-8")
+    with pytest.raises(ProjectFileError):
+        load_project(target)
+
+
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "1e999"])
+def test_compact_project_load_rejects_all_nonfinite_json_numbers(tmp_path: Path, token: str) -> None:
+    payload = serialize_mode_b_model(_mode_b_context().global_model, channel_labels=list("RGBA"))
+    project = build_mode_b_project(_mode_b_project_result(payload))
+    content = json.dumps(project, indent=2).replace('"mse": 0.001', f'"mse": {token}')
+    target = tmp_path / "nonfinite.mathfield"
+    target.write_text(content, encoding="utf-8")
+    with pytest.raises(ProjectFileError, match="[Nn]on-finite"):
+        load_project(target)
+
+
+def test_mode_b_payload_is_validated_once_and_shared_by_reference(monkeypatch) -> None:
+    payload = copy.deepcopy(
+        serialize_mode_b_model(
+            _mode_b_context().global_model,
+            _mode_b_context().local_decomposition,
+            channel_labels=list("RGBA"),
+        )
+    )
+    original = copy.deepcopy(payload)
+    parse_calls = 0
+    original_parse = model_codec._parse_mode_b_payload
+
+    def tracked_parse(data):
+        nonlocal parse_calls
+        parse_calls += 1
+        return original_parse(data)
+
+    def forbidden_patch(*args, **kwargs):
+        raise AssertionError("Read-only persistence consumers must not construct LocalPatch objects")
+
+    monkeypatch.setattr(model_codec, "_parse_mode_b_payload", tracked_parse)
+    monkeypatch.setattr(model_codec, "LocalPatch", forbidden_patch)
+
+    trusted = mode_b_payload_from_result({"mode_b_model": payload})
+    assert parse_calls == 1
+    assert trusted["coefficients"] is payload["coefficients"]
+    assert trusted["local_patches"] is payload["local_patches"]
+    formulas = {label: f"formula_{label}" for label in "RGBA"}
+    parameters = mode_b_parameter_table(trusted)
+    channels = mode_b_channel_records(trusted, formulas)
+    channel_formulas = mode_b_channel_formulas(trusted, formulas)
+    views = mode_b_legacy_views(trusted, formulas)
+    assert parse_calls == 1
+    assert list(parameters) == list(views["parameters"])
+    assert [channel["channel"] for channel in channels] == list("RGBA")
+    assert channel_formulas == formulas
+    assert payload == original
+
+
+def test_compact_mode_b_project_removes_synthetic_payload_amplification(tmp_path: Path) -> None:
+    payload = _synthetic_default_global_payload()
+    canonical_json = json.dumps(dict(payload), indent=2, ensure_ascii=False, allow_nan=False)
+    compact = build_mode_b_project(_mode_b_project_result(payload, {label: label.lower() for label in "RGB"}))
+    compact_path = tmp_path / "compact.mathfield"
+    save_project(compact, compact_path)
+
+    loaded = load_project(compact_path)
+    legacy = dict(loaded)
+    legacy["schema_version"] = "1.0.0"
+    legacy.pop("channel_formulas")
+    legacy_path = tmp_path / "legacy.mathfield"
+    save_project(legacy, legacy_path)
+
+    canonical_size = len(canonical_json.encode("utf-8"))
+    compact_size = compact_path.stat().st_size
+    legacy_size = legacy_path.stat().st_size
+    assert compact_size <= canonical_size * 1.2
+    assert compact_size < 1024 * 1024
+    assert legacy_size >= 4 * compact_size
