@@ -119,6 +119,26 @@ def test_dct2_boundary_reflection() -> None:
     np.testing.assert_allclose(dPhi_dx, 0.0, atol=1e-3)
 
 
+def test_dct2_basis_matrix_reuses_axis_cosines_exactly() -> None:
+    basis = DCT2Basis(freq_x=4, freq_y=3, x_bounds=(-2.0, 3.0), y_bounds=(4.0, 5.0))
+    x = np.linspace(-1.7, 2.8, 7)
+    y = np.linspace(4.1, 4.9, 5)
+    X, Y = np.meshgrid(x, y)
+    actual = basis.basis_matrix(X, Y)
+
+    xn = (X.ravel() + 2.0) / 5.0
+    yn = (Y.ravel() - 4.0)
+    expected = np.empty_like(actual)
+    sqrt_2 = np.sqrt(2.0)
+    for k, (p, q) in enumerate(basis.indices):
+        cos_p = np.cos(p * np.pi * xn) if p > 0 else np.ones(xn.size)
+        cos_q = np.cos(q * np.pi * yn) if q > 0 else np.ones(yn.size)
+        scale = (1.0 if p == 0 else sqrt_2) * (1.0 if q == 0 else sqrt_2)
+        expected[:, k] = scale * (cos_p * cos_q)
+
+    np.testing.assert_array_equal(actual, expected)
+
+
 def test_wendland_c2_rbf_compact_support() -> None:
     centers = np.array([[0.0, 0.0]])
     radii = np.array([1.0])

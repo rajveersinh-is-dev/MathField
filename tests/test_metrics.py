@@ -13,8 +13,11 @@ import math
 import warnings
 
 import numpy as np
+import pytest
 
 from mathfield.core.verify.metrics import (
+    _convolve_2d_reflect,
+    _gaussian_kernel_2d,
     compute_ciede2000,
     compute_linf,
     compute_mae,
@@ -66,6 +69,56 @@ def test_ssim_reference() -> None:
     inverted = 1.0 - img
     s_inv = compute_ssim(img, inverted)
     assert s_inv < 0.2
+
+
+def _reference_ssim(a: np.ndarray, b: np.ndarray, max_val: float, window_size: int, sigma: float) -> float:
+    if a.ndim == 3:
+        return float(np.mean([_reference_ssim(a[:, :, c], b[:, :, c], max_val, window_size, sigma) for c in range(a.shape[2])]))
+
+    kernel = _gaussian_kernel_2d(window_size, sigma)
+    c1 = (0.01 * max_val) ** 2
+    c2 = (0.03 * max_val) ** 2
+    mu1 = _convolve_2d_reflect(a, kernel)
+    mu2 = _convolve_2d_reflect(b, kernel)
+    mu1_sq = mu1 * mu1
+    mu2_sq = mu2 * mu2
+    mu1_mu2 = mu1 * mu2
+    sigma1_sq = _convolve_2d_reflect(a * a, kernel) - mu1_sq
+    sigma2_sq = _convolve_2d_reflect(b * b, kernel) - mu2_sq
+    sigma12 = _convolve_2d_reflect(a * b, kernel) - mu1_mu2
+    num = (2.0 * mu1_mu2 + c1) * (2.0 * sigma12 + c2)
+    den = (mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2)
+    return float(np.mean(num / den))
+
+
+@pytest.mark.parametrize("window_size", [5, 11, 12])
+@pytest.mark.parametrize("shape", [(19, 23), (32, 32)])
+def test_ssim_separable_matches_naive_convolution(window_size: int, shape: tuple[int, int]) -> None:
+    rng = np.random.default_rng(123)
+    a = rng.uniform(0.0, 1.0, size=shape)
+    b = rng.uniform(0.0, 1.0, size=shape)
+    expected = _reference_ssim(a, b, max_val=1.0, window_size=window_size, sigma=1.5)
+    assert math.isclose(compute_ssim(a, b, window_size=window_size), expected, abs_tol=2e-14)
+
+
+def test_ssim_separable_matches_rgb_impulses_and_near_constants() -> None:
+    rng = np.random.default_rng(321)
+    rgb_a = rng.uniform(0.0, 1.0, size=(24, 27, 3))
+    rgb_b = rng.uniform(0.0, 1.0, size=(24, 27, 3))
+    expected_rgb = _reference_ssim(rgb_a, rgb_b, max_val=1.0, window_size=11, sigma=1.5)
+    assert math.isclose(compute_ssim(rgb_a, rgb_b), expected_rgb, abs_tol=2e-14)
+
+    impulse_a = np.zeros((23, 27))
+    impulse_b = np.zeros((23, 27))
+    impulse_a[0, 13] = 1.0
+    impulse_b[22, 13] = 0.8
+    expected_impulse = _reference_ssim(impulse_a, impulse_b, max_val=1.0, window_size=11, sigma=1.5)
+    assert math.isclose(compute_ssim(impulse_a, impulse_b), expected_impulse, abs_tol=2e-14)
+
+    constant_a = np.full((23, 27), 0.5) + rng.normal(0.0, 1e-9, size=(23, 27))
+    constant_b = np.full((23, 27), 0.5) + rng.normal(0.0, 1e-9, size=(23, 27))
+    expected_constant = _reference_ssim(constant_a, constant_b, max_val=1.0, window_size=11, sigma=1.5)
+    assert math.isclose(compute_ssim(constant_a, constant_b), expected_constant, abs_tol=2e-14)
 
 
 def test_ciede2000_sharma_pairs() -> None:

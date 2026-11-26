@@ -122,19 +122,16 @@ class LocalPatch:
 
         p = self.basis.num_terms
         if residual.ndim == 3:
-            c_channels = []
             c = residual.shape[2]
-            for ch in range(c):
-                b_ch = r_fit[:, ch] * (w_fit if w_fit is not None else 1.0)
-                if reg_lambda > 0.0:
-                    A_aug = np.vstack([A, np.sqrt(reg_lambda) * np.eye(p)])
-                    b_aug = np.concatenate([b_ch, np.zeros(p)])
-                    c_opt, _, _, _ = np.linalg.lstsq(A_aug, b_aug, rcond=1e-10)
-                else:
-                    c_opt, _, _, _ = np.linalg.lstsq(A, b_ch, rcond=1e-10)
-                c_channels.append(c_opt)
-            self.coefficients = np.column_stack(c_channels)
-            fitted = Phi @ self.coefficients
+            b = r_fit * w_fit[:, np.newaxis] if w_fit is not None else r_fit
+            if reg_lambda > 0.0:
+                A_aug = np.vstack([A, np.sqrt(reg_lambda) * np.eye(p)])
+                b_aug = np.vstack([b, np.zeros((p, c))])
+                c_opt, _, _, _ = np.linalg.lstsq(A_aug, b_aug, rcond=1e-10)
+            else:
+                c_opt, _, _, _ = np.linalg.lstsq(A, b, rcond=1e-10)
+            self.coefficients = c_opt
+            fitted = Phi @ c_opt
             err = float(np.mean((fitted - r_fit) ** 2))
         else:
             b = r_fit * (w_fit if w_fit is not None else 1.0)
@@ -154,12 +151,11 @@ class LocalPatch:
     def evaluate(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
         """Evaluate local patch expression on coordinate grid."""
         u, v = self.normalize_coordinates(X, Y)
-        if self.coefficients is not None and self.coefficients.ndim == 2:
-            ch_outs = []
-            for ch in range(self.coefficients.shape[1]):
-                ch_outs.append(self.basis.evaluate(u, v, self.coefficients[:, ch]))
-            return np.stack(ch_outs, axis=-1)
-        return self.basis.evaluate(u, v, self.coefficients)
+        coefficients = self.coefficients
+        values = self.basis.basis_matrix(u, v) @ coefficients
+        if coefficients.ndim == 2:
+            return values.reshape(*u.shape, coefficients.shape[1])
+        return values.reshape(u.shape)
 
     def to_ast(
         self,

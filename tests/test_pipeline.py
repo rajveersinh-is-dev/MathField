@@ -11,9 +11,12 @@ Unit and integration test suite for Milestone 2 reconstruction pipeline:
 import math
 
 import numpy as np
+import pytest
 
+from mathfield.core.basis.fourier import DCT2Basis
 from mathfield.core.domain import CoordinateDomain2D
 from mathfield.core.image_analysis import ImageAnalyzer
+from mathfield.core.local.local_patch import LocalPatch
 from mathfield.core.local.partition_of_unity import WendlandPartitionOfUnity
 from mathfield.core.local.quadtree import QuadtreeDecomposition, QuadtreeNode
 from mathfield.core.optimize.conditioning import ConditionMonitor
@@ -84,6 +87,37 @@ def test_stage3_partition_of_unity_completeness() -> None:
     sum_weights = np.sum(weights, axis=0)
     # Weights must sum to 1.0 everywhere within 1e-5
     np.testing.assert_allclose(sum_weights, 1.0, atol=1e-5)
+
+
+@pytest.mark.parametrize("reg_lambda", [0.0, 1e-5])
+def test_local_patch_rgb_joint_solve_matches_channel_reference(reg_lambda: float) -> None:
+    rng = np.random.default_rng(91)
+    height, width = 12, 14
+    x = np.linspace(-0.9, 0.8, width)
+    y = np.linspace(-0.7, 1.0, height)
+    X, Y = np.meshgrid(x, y)
+    residual = rng.normal(size=(height, width, 3))
+    weights = rng.uniform(0.2, 1.0, size=(height, width))
+    basis = DCT2Basis(freq_x=3, freq_y=3)
+    patch = LocalPatch(bounds=(-0.8, -0.6, 0.9, 1.1), basis=basis)
+
+    patch.fit(residual, X, Y, weights=weights, reg_lambda=reg_lambda)
+
+    u, v = patch.normalize_coordinates(X, Y)
+    active = weights.ravel() > 1e-12
+    phi = basis.basis_matrix(u.ravel()[active], v.ravel()[active])
+    sqrt_w = np.sqrt(weights.ravel()[active])
+    design = phi * sqrt_w[:, np.newaxis]
+    targets = residual.reshape(-1, 3)[active] * sqrt_w[:, np.newaxis]
+    if reg_lambda > 0.0:
+        design = np.vstack([design, np.sqrt(reg_lambda) * np.eye(basis.num_terms)])
+        targets = np.vstack([targets, np.zeros((basis.num_terms, 3))])
+    expected = np.column_stack([np.linalg.lstsq(design, targets[:, ch], rcond=1e-10)[0] for ch in range(3)])
+    np.testing.assert_allclose(patch.coefficients, expected, atol=2e-12)
+
+    full_phi = basis.basis_matrix(u, v)
+    expected_eval = (full_phi @ expected).reshape(height, width, 3)
+    np.testing.assert_allclose(patch.evaluate(X, Y), expected_eval, atol=2e-12)
 
 
 def test_stage4_varpro_convergence() -> None:
@@ -203,6 +237,31 @@ def test_mode_b_fidelity() -> None:
     assert status == StageStatus.COMPLETED
     assert context.condition_report is not None
     assert context.metrics["psnr"] > 25.0
+
+
+def test_mode_b_joint_global_solve_matches_channel_reference() -> None:
+    rng = np.random.default_rng(72)
+    height, width = 10, 12
+    domain = CoordinateDomain2D(width=width, height=height)
+    image = rng.uniform(0.0, 1.0, size=(height, width, 3))
+    context = PipelineContext(image=image, domain=domain)
+    pipeline = ModeBPipeline(
+        config={
+            "global_degree": 2,
+            "fourier_freq": 2,
+            "max_depth": 0,
+            "enable_varpro": False,
+            "decouple_color": True,
+        }
+    )
+
+    assert pipeline.execute(context) == StageStatus.COMPLETED
+    model = context.global_model
+    X, Y = domain.to_discrete_grid()
+    phi = np.hstack([model["chebyshev_basis"].basis_matrix(X, Y), model["fourier_basis"].basis_matrix(X, Y)[:, 1:]])
+    targets = image.reshape(-1, 3)
+    expected = np.column_stack([np.linalg.lstsq(phi, targets[:, ch], rcond=1e-10)[0] for ch in range(3)])
+    np.testing.assert_allclose(model["coefficients"], expected, atol=2e-11)
 
 
 def test_controller_lifecycle() -> None:

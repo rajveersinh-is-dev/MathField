@@ -14,6 +14,7 @@ import math
 from typing import Dict, Optional
 
 import numpy as np
+from scipy.ndimage import convolve1d
 
 
 def _broadcast_weights(weights: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:
@@ -146,20 +147,35 @@ def compute_ssim(
         den = (mu_a * mu_a + mu_b * mu_b + c1) * (sigma_a_sq + sigma_b_sq + c2)
         return float(num / den)
 
-    kernel = _gaussian_kernel_2d(window_size, sigma)
     c1 = (0.01 * max_val) ** 2
     c2 = (0.03 * max_val) ** 2
 
-    mu1 = _convolve_2d_reflect(arr_a, kernel)
-    mu2 = _convolve_2d_reflect(arr_b, kernel)
+    if window_size % 2 == 0:
+        # Even windows include an extra half-pixel border in the reference path.
+        kernel_2d = _gaussian_kernel_2d(window_size, sigma)
+
+        def smooth(image: np.ndarray) -> np.ndarray:
+            return _convolve_2d_reflect(image, kernel_2d)
+
+    else:
+        coords = np.arange(window_size) - (window_size - 1) / 2.0
+        kernel = np.exp(-(coords * coords) / (2.0 * sigma * sigma))
+        kernel /= np.sum(kernel)
+
+        def smooth(image: np.ndarray) -> np.ndarray:
+            horizontal = convolve1d(image, kernel, axis=1, mode="mirror")
+            return convolve1d(horizontal, kernel, axis=0, mode="mirror")
+
+    mu1 = smooth(arr_a)
+    mu2 = smooth(arr_b)
 
     mu1_sq = mu1 * mu1
     mu2_sq = mu2 * mu2
     mu1_mu2 = mu1 * mu2
 
-    sigma1_sq = _convolve_2d_reflect(arr_a * arr_a, kernel) - mu1_sq
-    sigma2_sq = _convolve_2d_reflect(arr_b * arr_b, kernel) - mu2_sq
-    sigma12 = _convolve_2d_reflect(arr_a * arr_b, kernel) - mu1_mu2
+    sigma1_sq = smooth(arr_a * arr_a) - mu1_sq
+    sigma2_sq = smooth(arr_b * arr_b) - mu2_sq
+    sigma12 = smooth(arr_a * arr_b) - mu1_mu2
 
     num = (2.0 * mu1_mu2 + c1) * (2.0 * sigma12 + c2)
     den = (mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2)

@@ -227,15 +227,18 @@ class DCT2Basis(BasisFunction2D):
 
         Phi = np.empty((N, self._num_terms), dtype=np.float64)
         sqrt_2 = math.sqrt(2.0)
+        cos_x = np.ones((self.freq_x + 1, N), dtype=np.float64)
+        cos_y = np.ones((self.freq_y + 1, N), dtype=np.float64)
+        for p in range(1, self.freq_x + 1):
+            cos_x[p] = np.cos(p * np.pi * x_flat)
+        for q in range(1, self.freq_y + 1):
+            cos_y[q] = np.cos(q * np.pi * y_flat)
 
         for k, (p, q) in enumerate(self.indices):
             alpha_p = 1.0 if p == 0 else sqrt_2
             alpha_q = 1.0 if q == 0 else sqrt_2
             scale = alpha_p * alpha_q
-
-            cos_p = np.cos(p * np.pi * x_flat) if p > 0 else np.ones(N)
-            cos_q = np.cos(q * np.pi * y_flat) if q > 0 else np.ones(N)
-            Phi[:, k] = scale * (cos_p * cos_q)
+            Phi[:, k] = scale * (cos_x[p] * cos_y[q])
 
         return Phi
 

@@ -101,8 +101,6 @@ class ModeBPipeline:
             rhs = np.concatenate([b_ch, np.zeros(n_terms)]) if regularize else b_ch
             return np.linalg.lstsq(Phi_solve, rhs, rcond=1e-10)[0]
 
-        global_channels = []
-        global_coeffs = []
         shared_coeffs: Optional[np.ndarray] = None
         if not decouple_color and img_arr.ndim == 3:
             luminance = (
@@ -112,24 +110,22 @@ class ModeBPipeline:
             )
             shared_coeffs = solve_channel(luminance.ravel())
 
-        for ch in range(c):
-            if shared_coeffs is not None:
-                c_ch = shared_coeffs
-            else:
-                y_ch = img_arr[:, :, ch] if img_arr.ndim == 3 else img_arr
-                c_ch = solve_channel(y_ch.ravel())
-            fit_ch = Phi_global @ c_ch
-            global_channels.append(fit_ch.reshape(h, w))
-            global_coeffs.append(c_ch)
+        if shared_coeffs is not None:
+            coefficient_matrix = np.repeat(shared_coeffs[:, np.newaxis], c, axis=1)
+        else:
+            targets = img_arr.reshape(-1, c) if img_arr.ndim == 3 else img_arr.reshape(-1, 1)
+            rhs = np.vstack([targets, np.zeros((n_terms, c))]) if regularize else targets
+            coefficient_matrix = np.linalg.lstsq(Phi_solve, rhs, rcond=1e-10)[0]
 
-        global_recon = np.stack(global_channels, axis=-1) if c > 1 else global_channels[0]
+        global_values = Phi_global @ coefficient_matrix
+        global_recon = global_values.reshape(h, w, c) if c > 1 else global_values[:, 0].reshape(h, w)
         context.global_model = {
             "type": "mode_b_global_hybrid",
             "degree": global_deg,
             "fourier_freq": fourier_freq,
             "basis_terms_count": n_terms,
             "condition_number": cond_rep["condition_number"],
-            "coefficients": np.column_stack(global_coeffs) if c > 1 else global_coeffs[0],
+            "coefficients": coefficient_matrix if c > 1 else coefficient_matrix[:, 0],
             "chebyshev_basis": global_basis,
             "fourier_basis": fourier_basis,
         }
