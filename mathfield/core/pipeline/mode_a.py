@@ -67,6 +67,7 @@ class ModeAPipeline:
 
         lambda_reg = float(self.config.get("lambda_reg", 0.01))
         max_iter = int(self.config.get("max_iter", 15))
+        tolerance = float(self.config.get("tolerance", 1e-4))
         seed = int(self.config.get("seed", 42))
 
         # Candidate 1: Low-order Chebyshev polynomial expansion
@@ -108,6 +109,7 @@ class ModeAPipeline:
             population_size=20,
             generations=max(max_iter, 5),
             lambda_reg=lambda_reg,
+            tolerance=tolerance,
         )
         best_ast, evo_diag = evo.evolve(X, Y, target_lum)
 
@@ -130,6 +132,8 @@ class ModeAPipeline:
             return StageStatus.CANCELLED
 
         metrics = compute_metrics(fitted_arr, img_arr)
+        metrics["converged"] = float(evo_diag["converged"])
+        metrics["generations_run"] = float(evo_diag["generations_run"])
         context.metrics = metrics
         context.rendered_image = fitted_arr
 

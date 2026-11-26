@@ -287,6 +287,26 @@ def test_stage4_deterministic_evolutionary_seeding() -> None:
     assert str(best1) == str(best2)
 
 
+def test_evolutionary_tolerance_stops_after_stagnation() -> None:
+    axis = np.linspace(-1.0, 1.0, 12)
+    X, Y = np.meshgrid(axis, axis)
+    target = np.sin(X) + np.cos(Y)
+    optimizer = EvolutionaryOptimizer(random_seed=5, population_size=8, generations=20, tolerance=1e9)
+    _, diagnostics = optimizer.evolve(X, Y, target)
+    assert diagnostics["converged"] is True
+    assert diagnostics["generations_run"] == 5
+
+    exhaustive = EvolutionaryOptimizer(random_seed=5, population_size=8, generations=7, tolerance=0.0)
+    _, diagnostics = exhaustive.evolve(X, Y, target)
+    assert diagnostics["converged"] is False
+    assert diagnostics["generations_run"] == 7
+
+    with pytest.raises(ValueError, match="tolerance"):
+        EvolutionaryOptimizer(tolerance=-1.0)
+    with pytest.raises(ValueError, match="tolerance"):
+        EvolutionaryOptimizer(tolerance=float("nan"))
+
+
 def test_stage4_conditioning_stabilization() -> None:
     monitor = ConditionMonitor(max_condition_number=1e10, tikhonov_alpha=1e-4)
     # Collinear matrix with tiny perturbation
@@ -311,6 +331,8 @@ def test_mode_a_discovery() -> None:
     assert context.global_model is not None
     assert "formula" in context.global_model
     assert context.metrics["psnr"] > 15.0
+    assert context.metrics["converged"] in (0.0, 1.0)
+    assert context.metrics["generations_run"] >= 1.0
 
 
 def test_mode_b_fidelity() -> None:

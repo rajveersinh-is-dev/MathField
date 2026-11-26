@@ -51,6 +51,7 @@ class EvolutionaryOptimizer:
         crossover_prob: float = 0.7,
         mutation_prob: float = 0.25,
         max_depth: int = 5,
+        tolerance: float = 0.0,
     ) -> None:
         self.random_seed = random_seed
         self.population_size = population_size
@@ -60,6 +61,9 @@ class EvolutionaryOptimizer:
         self.crossover_prob = crossover_prob
         self.mutation_prob = mutation_prob
         self.max_depth = max_depth
+        if not np.isfinite(tolerance) or tolerance < 0.0:
+            raise ValueError("tolerance must be finite and non-negative")
+        self.tolerance = float(tolerance)
 
         self.rng = np.random.Generator(np.random.PCG64(random_seed))
         self.pareto_front: List[Individual] = []
@@ -237,6 +241,10 @@ class EvolutionaryOptimizer:
             self._update_pareto(ind)
 
         best_overall = min(population, key=lambda ind: ind.fitness)
+        previous_best = best_overall.fitness
+        stagnant_generations = 0
+        generations_run = 0
+        converged = False
 
         for gen in range(n_gens):
             # Elitism: retain top 2
@@ -278,10 +286,21 @@ class EvolutionaryOptimizer:
             if callback is not None:
                 callback(gen, best_overall)
 
+            generations_run = gen + 1
+            improvement = previous_best - best_overall.fitness
+            previous_best = best_overall.fitness
+            stagnant_generations = stagnant_generations + 1 if improvement <= self.tolerance else 0
+            if self.tolerance > 0.0 and stagnant_generations >= 5:
+                converged = True
+                break
+
         diagnostics = {
             "best_mse": best_overall.mse,
             "best_complexity": best_overall.complexity,
             "best_fitness": best_overall.fitness,
             "pareto_size": len(self.pareto_front),
+            "generations_run": generations_run,
+            "converged": converged,
+            "tolerance": self.tolerance,
         }
         return best_overall.ast, diagnostics
