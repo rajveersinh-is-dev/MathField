@@ -44,12 +44,9 @@ COMPACT_REQUIRED_ROOT_KEYS = [
     "mode_b_model",
     "final_metrics",
 ]
-REDUNDANT_COMPACT_KEYS = (
-    "global_model",
-    "local_decomposition",
+LEGACY_ONLY_COMPACT_KEYS = (
     "local_patches",
     "parameters",
-    "basis_terms_count",
     "partition_of_unity",
 )
 
@@ -218,9 +215,48 @@ def validate_project_dict(data: Dict[str, Any]) -> None:
 
 def _compact_project_payload(data: Mapping, mode_b_payload: Dict[str, Any]) -> Dict[str, Any]:
     compact = dict(data)
-    compact["channel_formulas"] = _project_channel_formulas(data, mode_b_payload)
+    formulas = _project_channel_formulas(data, mode_b_payload)
+    formula_source = data.get("channel_formula_source", "provided")
+    if formula_source == "provided" and formulas == mode_b_machine_formulas(mode_b_payload):
+        formulas = mode_b_channel_formulas(mode_b_payload)
+        formula_source = "mode_b_model"
+    compact["channel_formulas"] = formulas
+    compact["channel_formula_source"] = formula_source
     compact["mode_b_model"] = mode_b_payload
-    for key in REDUNDANT_COMPACT_KEYS:
+
+    metadata = mode_b_payload.get("global_metadata") or {}
+    global_basis = mode_b_payload["global_basis"]
+    term_count = len(mode_b_payload["coefficients"])
+    global_summary = {
+        "type": metadata.get("type", "mode_b_global_hybrid"),
+        "degree": int(global_basis["chebyshev"]["deg_x"]),
+        "fourier_freq": int(global_basis["fourier"]["freq_x"]),
+        "basis_terms_count": term_count,
+        "coefficients_ref": "mode_b_model.coefficients",
+        "channels": [
+            {"channel": label, "formula": formulas[label]}
+            for label in mode_b_payload["channel_labels"]
+        ],
+    }
+    if metadata.get("condition_number") is not None:
+        global_summary["condition_number"] = metadata["condition_number"]
+    compact["global_model"] = global_summary
+    compact["basis_terms_count"] = term_count
+    compact["local_decomposition"] = {
+        "leaves_count": len(mode_b_payload["local_patches"]),
+        "partition_of_unity": dict(mode_b_payload["partition_of_unity"]),
+        "coefficients_ref": "mode_b_model.local_patches",
+        "patches": [
+            {
+                "patch_id": patch["patch_id"],
+                "bounds": patch["bounds"],
+                "basis": patch["basis"],
+                "error": patch["error"],
+            }
+            for patch in mode_b_payload["local_patches"]
+        ],
+    }
+    for key in LEGACY_ONLY_COMPACT_KEYS:
         compact.pop(key, None)
     return compact
 

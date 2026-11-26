@@ -98,7 +98,7 @@ def test_cli_exports_real_expressions_and_patch_bounds(tmp_path: Path) -> None:
     Image.fromarray((build_sample(96, 64) * 255.0).astype(np.uint8)).save(image)
     out = tmp_path / "out"
     assert cli_main(["-i", str(image), "-o", str(out), "-m", "fidelity", "--max-iter", "3"]) == 0
-    project = __import__("json").loads((out / "mathfield_out.mathfield").read_text(encoding="utf-8"))
+    project = load_project(out / "mathfield_out.mathfield")
     assert "sin(x) + cos(y)" not in str(project["global_model"])
     assert "sin(x)" not in str(project["global_model"]["channels"])
     for patch in project["local_patches"]:

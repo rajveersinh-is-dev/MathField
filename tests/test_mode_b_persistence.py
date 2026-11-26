@@ -31,6 +31,7 @@ from mathfield.core.model_codec import (
     mode_b_channel_formulas,
     mode_b_channel_records,
     mode_b_legacy_views,
+    mode_b_machine_formulas,
     mode_b_parameter_table,
     mode_b_payload_from_result,
     serialize_mode_b_model,
@@ -260,8 +261,17 @@ def test_mode_b_project_checkpoint_bundle_and_standalone_roundtrip(tmp_path: Pat
     project_path = output / "mathfield_out.mathfield"
     raw_project = json.loads(project_path.read_text(encoding="utf-8"))
     assert raw_project["schema_version"] == "1.1.0"
-    for redundant_key in ("global_model", "parameters", "local_patches", "local_decomposition", "basis_terms_count"):
+    assert raw_project["channel_formula_source"] == "mode_b_model"
+    assert raw_project["channel_formulas"] == {
+        label: f"hybrid_chebyshev_fourier_channel_{label}" for label in "RGBA"
+    }
+    for redundant_key in ("parameters", "local_patches"):
         assert redundant_key not in raw_project
+    assert raw_project["global_model"]["degree"] == 1.0
+    assert raw_project["global_model"]["basis_terms_count"] == 11
+    assert "coefficients" not in raw_project["global_model"]
+    assert raw_project["local_decomposition"]["leaves_count"] == 2
+    assert all("coefficients" not in patch for patch in raw_project["local_decomposition"]["patches"])
     project = load_project(project_path)
     payload = project["mode_b_model"]
     json.dumps(payload, allow_nan=False)
@@ -588,10 +598,12 @@ def test_mode_b_compact_and_legacy_project_roundtrips(tmp_path: Path) -> None:
     raw_compact = json.loads(compact_path.read_text(encoding="utf-8"))
     assert raw_compact["schema_version"] == "1.1.0"
     assert raw_compact["channel_formulas"] == formulas
-    assert "global_model" not in raw_compact
     assert "parameters" not in raw_compact
     assert "local_patches" not in raw_compact
-    assert "local_decomposition" not in raw_compact
+    assert "coefficients" not in raw_compact["global_model"]
+    assert raw_compact["basis_terms_count"] == len(payload["coefficients"])
+    assert raw_compact["local_decomposition"]["leaves_count"] == len(payload["local_patches"])
+    assert all("coefficients" not in patch for patch in raw_compact["local_decomposition"]["patches"])
 
     loaded = load_project(compact_path)
     assert loaded["schema_version"] == "1.1.0"
@@ -737,7 +749,7 @@ def test_mode_b_payload_is_validated_once_and_shared_by_reference(monkeypatch) -
 def test_compact_mode_b_project_removes_synthetic_payload_amplification(tmp_path: Path) -> None:
     payload = _synthetic_default_global_payload()
     canonical_json = json.dumps(dict(payload), indent=2, ensure_ascii=False, allow_nan=False)
-    compact = build_mode_b_project(_mode_b_project_result(payload, {label: label.lower() for label in "RGB"}))
+    compact = build_mode_b_project(_mode_b_project_result(payload, mode_b_machine_formulas(payload)))
     compact_path = tmp_path / "compact.mathfield"
     save_project(compact, compact_path)
 
