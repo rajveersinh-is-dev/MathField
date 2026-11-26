@@ -121,6 +121,43 @@ def test_ssim_separable_matches_rgb_impulses_and_near_constants() -> None:
     assert math.isclose(compute_ssim(constant_a, constant_b), expected_constant, abs_tol=2e-14)
 
 
+def test_rgba_metrics_ignore_fully_transparent_hidden_rgb() -> None:
+    rng = np.random.default_rng(44)
+    target = np.zeros((16, 18, 4), dtype=np.float64)
+    target[:8, :, :3] = rng.random((8, 18, 3))
+    target[8:, :, 3] = 1.0
+    first = target.copy()
+    second = target.copy()
+    second[:8, :, :3] = rng.random((8, 18, 3))
+
+    first_metrics = compute_metrics(first, target)
+    second_metrics = compute_metrics(second, target)
+    for key, value in first_metrics.items():
+        if not key.startswith("raw_"):
+            assert second_metrics[key] == value
+    assert first_metrics["raw_mse"] != second_metrics["raw_mse"]
+    assert first_metrics["mse"] == 0.0
+    assert first_metrics["psnr"] == 100.0
+    assert first_metrics["ssim"] == 1.0
+
+
+def test_rgba_metrics_include_transparency_error() -> None:
+    target = np.ones((16, 16, 4), dtype=np.float64)
+    target[:, :, :3] = 0.0
+    prediction = target.copy()
+    prediction[:, :, 3] = 0.0
+    metrics = compute_metrics(prediction, target)
+    assert metrics["color_mse"] == 0.0
+    assert metrics["alpha_mse"] == 1.0
+    assert metrics["mse"] == 0.25
+    assert metrics["psnr"] < 100.0
+
+
+def test_metrics_reject_mismatched_shapes() -> None:
+    with pytest.raises(ValueError, match="shapes must match"):
+        compute_metrics(np.zeros((4, 4, 3)), np.zeros((4, 4)))
+
+
 def test_ciede2000_sharma_pairs() -> None:
     # Identical colors -> Delta E_00 = 0.0
     lab1 = np.array([50.0, 2.6772, -79.7751])

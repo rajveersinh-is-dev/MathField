@@ -289,26 +289,62 @@ def compute_ciede2000(
     return float(np.mean(de00))
 
 
-def compute_metrics(
-    pred: np.ndarray,
-    target: np.ndarray,
-) -> Dict[str, float]:
-    """
-    Compute comprehensive verification metric battery between two arrays.
-    """
-    p = np.asarray(pred, dtype=np.float64)
-    t = np.asarray(target, dtype=np.float64)
-
+def _compute_standard_metrics(p: np.ndarray, t: np.ndarray) -> Dict[str, float]:
     mse_val = compute_mse(p, t)
     mae_val = compute_mae(p, t)
     linf_val = compute_linf(p, t)
     psnr_val = compute_psnr(p, t)
     ssim_val = compute_ssim(p, t)
-
     return {
         "mse": mse_val,
         "mae": mae_val,
         "linf": linf_val,
         "psnr": psnr_val,
         "ssim": ssim_val,
+    }
+
+
+def compute_metrics(
+    pred: np.ndarray,
+    target: np.ndarray,
+) -> Dict[str, float]:
+    """Compute fidelity, using premultiplied visible color plus alpha for RGBA."""
+    p = np.asarray(pred, dtype=np.float64)
+    t = np.asarray(target, dtype=np.float64)
+    if p.shape != t.shape:
+        raise ValueError(f"Prediction and target shapes must match, got {p.shape} and {t.shape}")
+    if p.ndim != 3 or p.shape[2] != 4:
+        return _compute_standard_metrics(p, t)
+    if p.size == 0:
+        return _compute_standard_metrics(p, t)
+
+    alpha_p = np.clip(p[:, :, 3], 0.0, 1.0)
+    alpha_t = np.clip(t[:, :, 3], 0.0, 1.0)
+    visible = _compute_standard_metrics(p[:, :, :3] * alpha_p[:, :, np.newaxis], t[:, :, :3] * alpha_t[:, :, np.newaxis])
+    alpha = _compute_standard_metrics(alpha_p, alpha_t)
+    raw = _compute_standard_metrics(p, t)
+    combined_mse = 0.75 * visible["mse"] + 0.25 * alpha["mse"]
+    combined_mae = 0.75 * visible["mae"] + 0.25 * alpha["mae"]
+    combined_psnr = 100.0 if combined_mse < 1e-15 else float(20.0 * math.log10(1.0 / math.sqrt(combined_mse)))
+
+    return {
+        "mse": combined_mse,
+        "mae": combined_mae,
+        "linf": max(visible["linf"], alpha["linf"]),
+        "psnr": combined_psnr,
+        "ssim": 0.5 * (visible["ssim"] + alpha["ssim"]),
+        "color_mse": visible["mse"],
+        "color_mae": visible["mae"],
+        "color_psnr": visible["psnr"],
+        "color_ssim": visible["ssim"],
+        "alpha_mse": alpha["mse"],
+        "alpha_mae": alpha["mae"],
+        "alpha_linf": alpha["linf"],
+        "alpha_psnr": alpha["psnr"],
+        "alpha_ssim": alpha["ssim"],
+        "raw_mse": raw["mse"],
+        "raw_mae": raw["mae"],
+        "raw_linf": raw["linf"],
+        "raw_psnr": raw["psnr"],
+        "raw_ssim": raw["ssim"],
     }
