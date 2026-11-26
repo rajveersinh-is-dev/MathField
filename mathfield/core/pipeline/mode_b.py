@@ -85,38 +85,63 @@ class ModeBPipeline:
         y_flat = Y.ravel()
         target_matrix = img_arr.reshape(-1, c) if img_arr.ndim == 3 else img_arr.reshape(-1, 1)
         share_coefficients = not decouple_color and img_arr.ndim == 3
+        has_alpha = c == 4
+        alpha_flat = np.clip(target_matrix[:, 3], 0.0, 1.0) if has_alpha else None
+        sqrt_alpha = np.sqrt(alpha_flat) if alpha_flat is not None else None
         if share_coefficients:
             luminance = (
                 0.299 * img_arr[:, :, 0] + 0.587 * img_arr[:, :, 1] + 0.114 * img_arr[:, :, 2]
                 if c >= 3
                 else img_arr[:, :, 0]
             )
-            fit_targets = luminance.reshape(-1, 1)
+            color_targets = luminance.reshape(-1, 1)
         else:
-            fit_targets = target_matrix
+            color_targets = target_matrix[:, :3] if has_alpha else target_matrix
 
         block_size = max(n_terms, int(cfg.get("fit_block_size", max(4096, 4 * n_terms))))
 
-        def design_block(x_values: np.ndarray, y_values: np.ndarray) -> np.ndarray:
+        def design_block(
+            x_values: np.ndarray,
+            y_values: np.ndarray,
+            row_sqrt_weights: Optional[np.ndarray] = None,
+        ) -> np.ndarray:
             chebyshev = global_basis.basis_matrix(x_values, y_values)
             fourier = fourier_basis.basis_matrix(x_values, y_values)
-            return np.hstack([chebyshev, fourier[:, 1:]])
+            matrix = np.hstack([chebyshev, fourier[:, 1:]])
+            if row_sqrt_weights is not None:
+                matrix *= row_sqrt_weights[:, np.newaxis]
+            return matrix
 
-        def fit_blocks() -> Iterator[Tuple[np.ndarray, np.ndarray]]:
-            for start in range(0, x_flat.size, block_size):
-                stop = min(start + block_size, x_flat.size)
-                yield design_block(x_flat[start:stop], y_flat[start:stop]), fit_targets[start:stop]
+        def fit_coefficients(
+            targets: np.ndarray,
+            row_sqrt_weights: Optional[np.ndarray] = None,
+        ) -> Tuple[np.ndarray, Dict[str, Any]]:
+            def fit_blocks() -> Iterator[Tuple[np.ndarray, np.ndarray]]:
+                for start in range(0, x_flat.size, block_size):
+                    stop = min(start + block_size, x_flat.size)
+                    block_weights = row_sqrt_weights[start:stop] if row_sqrt_weights is not None else None
+                    yield design_block(x_flat[start:stop], y_flat[start:stop], block_weights), targets[start:stop]
 
-        r_matrix, projected_targets = blocked_qr(fit_blocks(), n_terms)
-        coefficient_matrix, cond_rep = solve_blocked_qr(
-            r_matrix,
-            projected_targets,
-            reg_lambda=float(cfg.get("tikhonov_alpha", reg_lambda)),
-            max_condition_number=float(cfg.get("max_condition_number", 1e10)),
-            enable_regularization=use_conditioning,
-        )
-        if share_coefficients:
-            coefficient_matrix = np.repeat(coefficient_matrix, c, axis=1)
+            r_matrix, projected_targets = blocked_qr(fit_blocks(), n_terms)
+            return solve_blocked_qr(
+                r_matrix,
+                projected_targets,
+                reg_lambda=float(cfg.get("tikhonov_alpha", reg_lambda)),
+                max_condition_number=float(cfg.get("max_condition_number", 1e10)),
+                enable_regularization=use_conditioning,
+            )
+
+        color_coefficients, cond_rep = fit_coefficients(color_targets, sqrt_alpha)
+        if has_alpha:
+            alpha_coefficients, alpha_cond_rep = fit_coefficients(target_matrix[:, 3:4])
+            if share_coefficients:
+                color_coefficients = np.repeat(color_coefficients, 3, axis=1)
+            coefficient_matrix = np.column_stack([color_coefficients, alpha_coefficients[:, 0]])
+            cond_rep["alpha_condition_number"] = alpha_cond_rep["condition_number"]
+        else:
+            coefficient_matrix = color_coefficients
+            if share_coefficients:
+                coefficient_matrix = np.repeat(coefficient_matrix, c, axis=1)
         context.condition_report = cond_rep
 
         global_values = np.empty((x_flat.size, c), dtype=np.float64)
@@ -143,7 +168,12 @@ class ModeBPipeline:
             return StageStatus.CANCELLED
 
         residual = img_arr - global_recon
-        res_mag = np.sqrt(np.mean(residual**2, axis=-1)) if residual.ndim == 3 else residual
+        if has_alpha:
+            alpha_image = alpha_flat.reshape(h, w)
+            visible_residual = residual[:, :, :3] * alpha_image[:, :, np.newaxis]
+            res_mag = np.sqrt(0.75 * np.mean(visible_residual**2, axis=-1) + 0.25 * residual[:, :, 3] ** 2)
+        else:
+            res_mag = np.sqrt(np.mean(residual**2, axis=-1)) if residual.ndim == 3 else residual
         root_mse = float(np.mean(res_mag**2))
         default_thresh = max(1e-4, min(0.05, 0.25 * root_mse))
         split_thresh = float(cfg.get("split_threshold", default_thresh))
@@ -203,7 +233,11 @@ class ModeBPipeline:
                 patch_basis = Chebyshev2D(deg_x=deg, deg_y=deg, truncation="total_degree")
 
             patch = LocalPatch(bounds=leaf.bounds, basis=patch_basis)
-            patch.fit(sub_res, sub_X, sub_Y, weights=sub_W, reg_lambda=reg_lambda)
+            sample_weights = None
+            if has_alpha:
+                sub_alpha = alpha_image[r0:r1, c0:c1]
+                sample_weights = np.stack([sub_alpha, sub_alpha, sub_alpha, np.ones_like(sub_alpha)], axis=-1)
+            patch.fit(sub_res, sub_X, sub_Y, weights=sub_W, reg_lambda=reg_lambda, sample_weights=sample_weights)
             sub_fit = patch.evaluate(sub_X, sub_Y)
 
             if c > 1:

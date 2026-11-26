@@ -89,11 +89,13 @@ class ModeAPipeline:
         channel_asts = []
         channel_coefficients = []
         fitted_channels = []
+        alpha_weights = img_arr[:, :, 3].ravel() if img_arr.ndim == 3 and c >= 4 else None
 
         for ch in range(c):
             y_ch = img_arr[:, :, ch] if img_arr.ndim == 3 else img_arr
+            channel_weights = alpha_weights if ch < 3 else None
             # BIC pruning backward elimination
-            prune_res = pruner.prune_matrix(Phi, y_ch, reg_lambda=lambda_reg)
+            prune_res = pruner.prune_matrix(Phi, y_ch, reg_lambda=lambda_reg, weights=channel_weights)
             cheb_ch = Chebyshev2D(deg_x=deg, deg_y=deg, truncation="total_degree", coefficients=prune_res.coefficients)
             ast_ch = cheb_ch.to_ast(prune_threshold=0.0)
             channel_asts.append(ast_ch)

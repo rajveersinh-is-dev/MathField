@@ -51,6 +51,7 @@ class BICPruner:
         Phi: np.ndarray,
         target: np.ndarray,
         reg_lambda: float = 1e-6,
+        weights: Optional[np.ndarray] = None,
     ) -> PruningResult:
         """
         Execute backward elimination on design matrix Phi of shape (N, K).
@@ -58,15 +59,30 @@ class BICPruner:
         Phi_mat = np.asarray(Phi, dtype=np.float64)
         y = np.asarray(target, dtype=np.float64).ravel()
         N, K = Phi_mat.shape
+        if weights is None:
+            weight_vec = np.ones(N, dtype=np.float64)
+        else:
+            weight_vec = np.asarray(weights, dtype=np.float64).ravel()
+            if weight_vec.shape[0] != N:
+                raise ValueError("Weight count must match the design matrix rows")
+            if not np.all(np.isfinite(weight_vec)) or np.any(weight_vec < 0.0):
+                raise ValueError("Weights must be finite and non-negative")
+        weight_sum = float(np.sum(weight_vec))
+        n_samples = int(np.count_nonzero(weight_vec > 0.0))
+        if weight_sum <= 0.0:
+            return PruningResult(list(range(K)), [], 0.0, 0.0, 0.0, 0.0, np.zeros(K, dtype=np.float64))
 
+        sqrt_weights = np.sqrt(weight_vec)
+        Phi_fit = Phi_mat * sqrt_weights[:, np.newaxis]
+        y_fit = y * sqrt_weights
         active_indices: List[int] = list(range(K))
 
         # Solve initial model
-        c_init, _ = solve_linear_lstsq(Phi_mat, y, reg_lambda=reg_lambda, method="svd")
-        res_init = y - Phi_mat @ c_init
+        c_init, _ = solve_linear_lstsq(Phi_fit, y_fit, reg_lambda=reg_lambda, method="svd")
+        res_init = y_fit - Phi_fit @ c_init
         rss_init = float(np.sum(res_init**2))
-        mse_init = (rss_init / N) if N > 0 else 0.0
-        bic_init = self.compute_bic(rss_init, N, len(active_indices))
+        mse_init = rss_init / weight_sum
+        bic_init = self.compute_bic(rss_init, n_samples, len(active_indices))
 
         curr_bic = bic_init
         curr_c = c_init
@@ -78,12 +94,12 @@ class BICPruner:
 
             for term_idx in active_indices:
                 cand_sub = [idx for idx in active_indices if idx != term_idx]
-                Phi_sub = Phi_mat[:, cand_sub]
+                Phi_sub = Phi_fit[:, cand_sub]
 
-                c_sub, _ = solve_linear_lstsq(Phi_sub, y, reg_lambda=reg_lambda, method="svd")
-                res_sub = y - Phi_sub @ c_sub
+                c_sub, _ = solve_linear_lstsq(Phi_sub, y_fit, reg_lambda=reg_lambda, method="svd")
+                res_sub = y_fit - Phi_sub @ c_sub
                 rss_sub = float(np.sum(res_sub**2))
-                cand_bic = self.compute_bic(rss_sub, N, len(cand_sub))
+                cand_bic = self.compute_bic(rss_sub, n_samples, len(cand_sub))
 
                 if cand_bic < best_cand_bic:
                     best_cand_bic = cand_bic
@@ -106,8 +122,8 @@ class BICPruner:
         for i, idx in enumerate(active_indices):
             full_c[idx] = curr_c[i]
 
-        res_final = y - Phi_mat @ full_c
-        mse_final = float(np.mean(res_final**2)) if N > 0 else 0.0
+        res_final = y_fit - Phi_fit @ full_c
+        mse_final = float(np.sum(res_final**2) / weight_sum)
 
         return PruningResult(
             retained_indices=active_indices,

@@ -208,6 +208,33 @@ def test_local_patch_rgb_joint_solve_matches_channel_reference(reg_lambda: float
     np.testing.assert_allclose(patch.evaluate(X, Y), expected_eval, atol=2e-12)
 
 
+def test_local_patch_rgba_sample_weights_match_channel_reference() -> None:
+    rng = np.random.default_rng(92)
+    height, width = 12, 14
+    x = np.linspace(-0.9, 0.8, width)
+    y = np.linspace(-0.7, 1.0, height)
+    X, Y = np.meshgrid(x, y)
+    residual = rng.normal(size=(height, width, 4))
+    partition_weights = rng.uniform(0.2, 1.0, size=(height, width))
+    alpha = rng.uniform(0.0, 1.0, size=(height, width))
+    sample_weights = np.stack([alpha, alpha, alpha, np.ones_like(alpha)], axis=-1)
+    basis = DCT2Basis(freq_x=2, freq_y=2)
+    patch = LocalPatch(bounds=(-0.8, -0.6, 0.9, 1.1), basis=basis)
+    patch.fit(residual, X, Y, weights=partition_weights, reg_lambda=1e-5, sample_weights=sample_weights)
+
+    u, v = patch.normalize_coordinates(X, Y)
+    phi = basis.basis_matrix(u, v)
+    expected_channels = []
+    for channel in range(4):
+        row_weights = np.sqrt(partition_weights * sample_weights[:, :, channel])
+        design = phi * row_weights.ravel()[:, np.newaxis]
+        targets = residual[:, :, channel].ravel() * row_weights.ravel()
+        design = np.vstack([design, np.sqrt(1e-5) * np.eye(basis.num_terms)])
+        targets = np.concatenate([targets, np.zeros(basis.num_terms)])
+        expected_channels.append(np.linalg.lstsq(design, targets, rcond=1e-10)[0])
+    np.testing.assert_allclose(patch.coefficients, np.column_stack(expected_channels), atol=2e-12)
+
+
 def test_stage4_varpro_convergence() -> None:
     # Model: y = c0 * exp(-theta0 * x^2) + c1 * cos(theta1 * x)
     # True parameters: theta = [2.0, 3.0], c = [1.5, -0.8]
@@ -335,6 +362,32 @@ def test_mode_a_discovery() -> None:
     assert context.metrics["generations_run"] >= 1.0
 
 
+def test_mode_a_rgba_fit_ignores_hidden_rgb() -> None:
+    rng = np.random.default_rng(101)
+    height, width = 12, 14
+    domain = CoordinateDomain2D(width=width, height=height)
+    first = np.zeros((height, width, 4), dtype=np.float64)
+    second = first.copy()
+    first[:6, :, :3] = rng.random((6, width, 3))
+    second[:6, :, :3] = rng.random((6, width, 3))
+    yy, xx = np.mgrid[0:height, 0:width] / np.array([height - 1, width - 1])[:, None, None]
+    first[6:, :, 0] = 0.2 + 0.6 * xx[6:]
+    first[6:, :, 1] = 0.7 - 0.4 * yy[6:]
+    first[6:, :, 2] = 0.1 + 0.7 * xx[6:] * yy[6:]
+    first[:6, :, 3] = 0.0
+    first[6:, :, 3] = 0.3 + 0.5 * xx[6:]
+    second[6:] = first[6:]
+    contexts = []
+    for image in (first, second):
+        context = PipelineContext(image=image, domain=domain)
+        assert ModeAPipeline(config={"max_iter": 1, "seed": 42}).execute(context) == StageStatus.COMPLETED
+        contexts.append(context)
+    for actual, expected in zip(contexts[0].global_model["channel_coefficients"], contexts[1].global_model["channel_coefficients"], strict=True):
+        np.testing.assert_allclose(actual, expected, atol=1e-12)
+    np.testing.assert_allclose(contexts[0].rendered_image, contexts[1].rendered_image, atol=1e-12)
+    assert contexts[0].metrics["mse"] == pytest.approx(contexts[1].metrics["mse"], abs=1e-15)
+
+
 def test_mode_b_fidelity() -> None:
     domain = CoordinateDomain2D(width=24, height=24)
     X, Y = domain.to_discrete_grid()
@@ -347,6 +400,41 @@ def test_mode_b_fidelity() -> None:
     assert status == StageStatus.COMPLETED
     assert context.condition_report is not None
     assert context.metrics["psnr"] > 25.0
+
+
+def test_mode_b_rgba_fit_ignores_hidden_rgb() -> None:
+    rng = np.random.default_rng(102)
+    height, width = 12, 14
+    domain = CoordinateDomain2D(width=width, height=height)
+    first = np.zeros((height, width, 4), dtype=np.float64)
+    second = first.copy()
+    first[:6, :, :3] = rng.random((6, width, 3))
+    second[:6, :, :3] = rng.random((6, width, 3))
+    yy, xx = np.mgrid[0:height, 0:width] / np.array([height - 1, width - 1])[:, None, None]
+    first[6:, :, 0] = 0.2 + 0.6 * xx[6:]
+    first[6:, :, 1] = 0.7 - 0.4 * yy[6:]
+    first[6:, :, 2] = 0.1 + 0.7 * xx[6:] * yy[6:]
+    first[:6, :, 3] = 0.0
+    first[6:, :, 3] = 0.3 + 0.5 * xx[6:]
+    second[6:] = first[6:]
+    config = {
+        "global_degree": 1,
+        "fourier_freq": 1,
+        "max_depth": 1,
+        "split_threshold": 0.0,
+        "local_freq": 1,
+        "enable_varpro": False,
+    }
+    contexts = []
+    for image in (first, second):
+        context = PipelineContext(image=image, domain=domain, config=config)
+        assert ModeBPipeline(config=config).execute(context) == StageStatus.COMPLETED
+        contexts.append(context)
+    np.testing.assert_allclose(contexts[0].global_model["coefficients"], contexts[1].global_model["coefficients"], atol=1e-12)
+    for actual, expected in zip(contexts[0].local_decomposition["patches"], contexts[1].local_decomposition["patches"], strict=True):
+        np.testing.assert_allclose(actual.coefficients, expected.coefficients, atol=1e-12)
+    np.testing.assert_allclose(contexts[0].rendered_image, contexts[1].rendered_image, atol=1e-12)
+    assert contexts[0].metrics["mse"] == pytest.approx(contexts[1].metrics["mse"], abs=1e-15)
 
 
 def test_mode_b_joint_global_solve_matches_channel_reference() -> None:

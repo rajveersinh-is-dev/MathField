@@ -193,6 +193,20 @@ def test_bic_pruning() -> None:
     assert res.final_bic <= res.initial_bic
 
 
+def test_bic_pruning_ignores_zero_weight_outliers() -> None:
+    x = np.linspace(-1.0, 1.0, 20)
+    phi = np.column_stack([np.ones(x.size), x])
+    target = 0.4 + 0.7 * x
+    contaminated = target.copy()
+    contaminated[-1] = 1e6
+    weights = np.ones(x.size)
+    weights[-1] = 0.0
+    pruner = BICPruner()
+    clean = pruner.prune_matrix(phi, target, reg_lambda=1e-6)
+    weighted = pruner.prune_matrix(phi, contaminated, reg_lambda=1e-6, weights=weights)
+    np.testing.assert_allclose(weighted.coefficients, clean.coefficients, atol=1e-12)
+
+
 def test_metrics_empty_inputs_zero_warnings() -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")

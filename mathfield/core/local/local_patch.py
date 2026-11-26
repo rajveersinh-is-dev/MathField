@@ -79,6 +79,7 @@ class LocalPatch:
         Y: np.ndarray,
         weights: Optional[np.ndarray] = None,
         reg_lambda: float = 1e-4,
+        sample_weights: Optional[np.ndarray] = None,
     ) -> float:
         """
         Fit local basis to residual using regularized (weighted) least squares:
@@ -88,59 +89,92 @@ class LocalPatch:
         """
         u, v = self.normalize_coordinates(X, Y)
 
-        # Check active region if weights provided
-        if weights is not None:
-            w_flat = weights.ravel()
-            active = w_flat > 1e-12
-            if np.sum(active) >= self.basis.num_terms:
-                u_fit = u.ravel()[active]
-                v_fit = v.ravel()[active]
-                w_fit = np.sqrt(np.maximum(w_flat[active], 0.0))
-                Phi = self.basis.basis_matrix(u_fit, v_fit)
-                A = Phi * w_fit[:, np.newaxis]
-                if residual.ndim == 3:
-                    r_fit = residual.reshape(-1, residual.shape[2])[active, :]
-                else:
-                    r_fit = residual.ravel()[active]
+        if weights is None:
+            active = np.ones(u.size, dtype=bool)
+            base_sqrt_weights = np.ones(u.size, dtype=np.float64)
+        else:
+            weight_flat = np.asarray(weights, dtype=np.float64).ravel()
+            if weight_flat.size != u.size:
+                raise ValueError("Weight count must match the coordinate grid")
+            if not np.all(np.isfinite(weight_flat)) or np.any(weight_flat < 0.0):
+                raise ValueError("Weights must be finite and non-negative")
+            active = weight_flat > 1e-12
+            base_sqrt_weights = np.sqrt(np.maximum(weight_flat, 0.0))
+
+        use_active = int(np.count_nonzero(active)) >= self.basis.num_terms
+        if use_active:
+            Phi = self.basis.basis_matrix(u.ravel()[active], v.ravel()[active])
+            base_fit = base_sqrt_weights[active]
+            if residual.ndim == 3:
+                r_fit = residual.reshape(-1, residual.shape[2])[active, :]
             else:
-                Phi = self.basis.basis_matrix(u, v)
-                w_sq = np.sqrt(np.maximum(w_flat, 0.0))
-                A = Phi * w_sq[:, np.newaxis]
-                if residual.ndim == 3:
-                    r_fit = residual.reshape(-1, residual.shape[2])
-                else:
-                    r_fit = residual.ravel()
-                w_fit = w_sq
+                r_fit = residual.ravel()[active]
         else:
             Phi = self.basis.basis_matrix(u, v)
-            A = Phi
-            w_fit = None
+            base_fit = base_sqrt_weights
             if residual.ndim == 3:
                 r_fit = residual.reshape(-1, residual.shape[2])
             else:
                 r_fit = residual.ravel()
 
+        sample_sqrt_weights = None
+        if sample_weights is not None:
+            sample = np.asarray(sample_weights, dtype=np.float64)
+            if sample.ndim == 2:
+                sample = sample[:, :, np.newaxis]
+            if sample.ndim != 3 or sample.shape[:2] != residual.shape[:2]:
+                raise ValueError("Sample weights must match the residual spatial shape")
+            expected_channels = residual.shape[2] if residual.ndim == 3 else 1
+            if sample.shape[2] not in (1, expected_channels):
+                raise ValueError("Sample weight channel count must be one or match the residual channels")
+            if not np.all(np.isfinite(sample)) or np.any(sample < 0.0):
+                raise ValueError("Sample weights must be finite and non-negative")
+            sample_flat = sample.reshape(-1, sample.shape[2])
+            sample_fit = sample_flat[active] if use_active else sample_flat
+            sample_sqrt_weights = base_fit[:, np.newaxis] * np.sqrt(sample_fit)
+
         p = self.basis.num_terms
         if residual.ndim == 3:
             c = residual.shape[2]
-            b = r_fit * w_fit[:, np.newaxis] if w_fit is not None else r_fit
-            if reg_lambda > 0.0:
-                A_aug = np.vstack([A, np.sqrt(reg_lambda) * np.eye(p)])
-                b_aug = np.vstack([b, np.zeros((p, c))])
-                c_opt, _, _, _ = np.linalg.lstsq(A_aug, b_aug, rcond=1e-10)
+            if sample_sqrt_weights is None:
+                row_weights = base_fit
+                design = Phi * row_weights[:, np.newaxis]
+                targets = r_fit * row_weights[:, np.newaxis]
+                if reg_lambda > 0.0:
+                    design = np.vstack([design, np.sqrt(reg_lambda) * np.eye(p)])
+                    targets = np.vstack([targets, np.zeros((p, c))])
+                c_opt, _, _, _ = np.linalg.lstsq(design, targets, rcond=1e-10)
+            elif sample_sqrt_weights.shape[1] == 1 or np.array_equal(sample_sqrt_weights, sample_sqrt_weights[:, :1]):
+                row_weights = sample_sqrt_weights[:, 0]
+                design = Phi * row_weights[:, np.newaxis]
+                targets = r_fit * row_weights[:, np.newaxis]
+                if reg_lambda > 0.0:
+                    design = np.vstack([design, np.sqrt(reg_lambda) * np.eye(p)])
+                    targets = np.vstack([targets, np.zeros((p, c))])
+                c_opt, _, _, _ = np.linalg.lstsq(design, targets, rcond=1e-10)
             else:
-                c_opt, _, _, _ = np.linalg.lstsq(A, b, rcond=1e-10)
+                channels = []
+                for ch in range(c):
+                    row_weights = sample_sqrt_weights[:, ch]
+                    design = Phi * row_weights[:, np.newaxis]
+                    targets = r_fit[:, ch] * row_weights
+                    if reg_lambda > 0.0:
+                        design = np.vstack([design, np.sqrt(reg_lambda) * np.eye(p)])
+                        targets = np.concatenate([targets, np.zeros(p)])
+                    coefficient, _, _, _ = np.linalg.lstsq(design, targets, rcond=1e-10)
+                    channels.append(coefficient)
+                c_opt = np.column_stack(channels)
             self.coefficients = c_opt
             fitted = Phi @ c_opt
             err = float(np.mean((fitted - r_fit) ** 2))
         else:
-            b = r_fit * (w_fit if w_fit is not None else 1.0)
+            row_weights = sample_sqrt_weights[:, 0] if sample_sqrt_weights is not None else base_fit
+            design = Phi * row_weights[:, np.newaxis]
+            targets = r_fit * row_weights
             if reg_lambda > 0.0:
-                A_aug = np.vstack([A, np.sqrt(reg_lambda) * np.eye(p)])
-                b_aug = np.concatenate([b, np.zeros(p)])
-                c_opt, _, _, _ = np.linalg.lstsq(A_aug, b_aug, rcond=1e-10)
-            else:
-                c_opt, _, _, _ = np.linalg.lstsq(A, b, rcond=1e-10)
+                design = np.vstack([design, np.sqrt(reg_lambda) * np.eye(p)])
+                targets = np.concatenate([targets, np.zeros(p)])
+            c_opt, _, _, _ = np.linalg.lstsq(design, targets, rcond=1e-10)
             self.coefficients = c_opt
             fitted = Phi @ c_opt
             err = float(np.mean((fitted - r_fit) ** 2))
