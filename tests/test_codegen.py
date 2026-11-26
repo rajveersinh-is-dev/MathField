@@ -141,3 +141,175 @@ def test_artwork_poster_dynamic_formula_panel():
     panel_empty = generate_math_panel(result_empty, width_px=800, height_px=400)
     assert isinstance(panel_empty, Image.Image)
     assert panel_empty.size == (800, 400)
+
+
+def _pdf_report_text(path) -> str:
+    try:
+        import fitz
+    except ImportError:
+        pypdf = pytest.importorskip("pypdf")
+        reader = pypdf.PdfReader(str(path))
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    with fitz.open(str(path)) as document:
+        return "\n".join(page.get_text() for page in document)
+
+
+def _mode_a_report_result():
+    return {
+        "coordinate_domain": {
+            "x_min": -1.0,
+            "x_max": 1.0,
+            "y_min": -1.0,
+            "y_max": 1.0,
+            "pixel_width": 32,
+            "pixel_height": 24,
+        },
+        "color_space": "RGB",
+        "mode": "MODE_A_DISCOVERY",
+        "global_equations": {
+            "R": "c0 * x + 0.25",
+            "G": "0.5",
+            "B": "c1 * y - 0.1",
+            "formula": "quadtree DCT2Basis metadata",
+        },
+        "parameters": {
+            "R_c0": {"stage": "symbolic", "channel": "R", "value": 0.5},
+            "B_c1": {"stage": "symbolic", "channel": "B", "value": -0.2},
+        },
+        "metrics": {"psnr": 32.5, "ssim": 0.95, "mse": 0.0000295, "mae": 0.001, "linf": 0.004},
+        # Stale/auxiliary patch data must not change a Mode A report.
+        "patch_equations": [{"id": "P_001", "formula": "DCT2Basis"}],
+        "local_patches": [
+            {
+                "patch_id": 0,
+                "bounds": [-1.0, -1.0, 1.0, 1.0],
+                "basis": {"type": "dct2", "freq_x": 2, "freq_y": 2},
+            }
+        ],
+    }
+
+
+def _normalized_report_text(text: str) -> str:
+    return " ".join(text.casefold().replace(r"\_", "_").split())
+
+
+def _assert_mode_a_report_text(text: str) -> None:
+    normalized = _normalized_report_text(text)
+    assert "mode_a_discovery" in normalized
+    assert "c0 * x + 0.25" in normalized
+    assert "32.50 db" in normalized
+    for forbidden in (
+        "patch",
+        "dct",
+        "quadtree",
+        "wendland",
+        "partition",
+        "fourier",
+        "chebyshev",
+        "hybrid",
+    ):
+        assert forbidden not in normalized
+
+
+def test_mode_a_latex_report_contains_only_delivered_symbolic_model(tmp_path) -> None:
+    from mathfield.export.latex_report import export_latex_report
+
+    output = tmp_path / "mode_a.tex"
+    export_latex_report(_mode_a_report_result(), output)
+
+    text = output.read_text(encoding="utf-8")
+    _assert_mode_a_report_text(text)
+    assert "0.500000" in text
+    assert "No model parameters were supplied" not in text
+
+
+def test_mode_a_pdf_report_contains_only_delivered_symbolic_model(tmp_path) -> None:
+    from mathfield.export.pdf_report import export_pdf_report
+
+    output = tmp_path / "mode_a.pdf"
+    export_pdf_report(_mode_a_report_result(), output)
+
+    _assert_mode_a_report_text(_pdf_report_text(output))
+
+
+def _serialized_dct_patch():
+    return {
+        "patch_id": 0,
+        "bounds": [-0.5, -0.25, 0.5, 0.25],
+        "basis": {
+            "type": "dct2",
+            "freq_x": 2,
+            "freq_y": 2,
+            "x_bounds": [-0.5, 0.5],
+            "y_bounds": [-0.25, 0.25],
+        },
+        "coefficients": [[0.1, 0.2, 0.3] for _ in range(9)],
+        "coefficient_dimensions": 2,
+        "error": 0.0001,
+    }
+
+
+@pytest.mark.parametrize("patch_source", ["mode_b_model", "local_patches"])
+def test_mode_b_reports_catalog_only_authoritative_local_patches(tmp_path, patch_source: str) -> None:
+    from mathfield.export.latex_report import export_latex_report
+    from mathfield.export.pdf_report import export_pdf_report
+
+    patch = _serialized_dct_patch()
+    result = {
+        "mode": "MODE_B_FIDELITY",
+        "global_equations": {"R": "0.5 + 0.1*x", "G": "0.4", "B": "0.3"},
+        "parameters": {"R_c0": 0.5},
+        "metrics": {"psnr": 30.0},
+        # Display-only patch metadata is not an authoritative patch catalog.
+        "patch_equations": [{"id": "P_001", "formula": "FABRICATED_DCT2"}],
+    }
+    if patch_source == "mode_b_model":
+        result["mode_b_model"] = {"local_patches": [patch]}
+        result["local_patches"] = [{"id": "P_999", "formula": "CONFLICTING_LOCAL_PATCH"}]
+    else:
+        result["local_patches"] = [patch]
+
+    tex_path = tmp_path / f"mode_b_{patch_source}.tex"
+    pdf_path = tmp_path / f"mode_b_{patch_source}.pdf"
+    export_latex_report(result, tex_path)
+    export_pdf_report(result, pdf_path)
+
+    for text in (tex_path.read_text(encoding="utf-8"), _pdf_report_text(pdf_path)):
+        normalized = _normalized_report_text(text)
+        assert "p_000" in normalized
+        assert "dct2basis" in normalized
+        assert "freq_x=2" in normalized
+        assert "wendland" in normalized
+        assert "partition of unity" in normalized
+        assert "p_001" not in normalized
+        assert "p_999" not in normalized
+        assert "fabricated_dct2" not in normalized
+        assert "conflicting_local_patch" not in normalized
+
+
+def test_mode_b_reports_explicitly_when_local_patches_are_empty(tmp_path) -> None:
+    from mathfield.export.latex_report import export_latex_report
+    from mathfield.export.pdf_report import export_pdf_report
+
+    result = {
+        "mode": "MODE_B_FIDELITY",
+        "global_equations": {"R": "0.5 + 0.1*x", "G": "0.4", "B": "0.3"},
+        "parameters": {"R_c0": 0.5},
+        "metrics": {"psnr": 30.0},
+        "mode_b_model": {"local_patches": []},
+        "local_patches": [],
+        "patch_equations": [{"id": "P_001", "formula": "FABRICATED_DCT2"}],
+    }
+
+    tex_path = tmp_path / "mode_b_empty.tex"
+    pdf_path = tmp_path / "mode_b_empty.pdf"
+    export_latex_report(result, tex_path)
+    export_pdf_report(result, pdf_path)
+
+    for text in (tex_path.read_text(encoding="utf-8"), _pdf_report_text(pdf_path)):
+        normalized = _normalized_report_text(text)
+        assert "no local patches are present" in normalized
+        assert "p_001" not in normalized
+        assert "dct" not in normalized
+        assert "fabricated_dct2" not in normalized
