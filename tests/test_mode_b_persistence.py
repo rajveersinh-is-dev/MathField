@@ -373,6 +373,60 @@ def test_actual_mode_b_pipeline_standalone_matches_rendered_pixels(tmp_path: Pat
     assert int(np.max(np.abs(reproduced.astype(np.int16) - delivered.astype(np.int16)))) <= 1
 
 
+def test_mode_b_standalone_materializes_global_bases_in_bounded_blocks(tmp_path: Path) -> None:
+    chebyshev = Chebyshev2D(deg_x=6, deg_y=6, truncation="total_degree")
+    fourier = Fourier2D(freq_x=12, freq_y=12, truncation="rectangular")
+    term_count = chebyshev.num_terms + fourier.num_terms - 1
+    payload = serialize_mode_b_model(
+        {
+            "type": "mode_b_global_hybrid",
+            "degree": 6,
+            "fourier_freq": 12,
+            "basis_terms_count": term_count,
+            "condition_number": 1.0,
+            "coefficients": np.zeros((term_count, 3)),
+            "chebyshev_basis": chebyshev,
+            "fourier_basis": fourier,
+        },
+        channel_labels=list("RGB"),
+    )
+    script_path = tmp_path / "reproduce.py"
+    export_standalone_script(
+        {
+            "mode_b_model": payload,
+            "coordinate_domain": {
+                "x_min": -1.0,
+                "x_max": 1.0,
+                "y_min": -1.0,
+                "y_max": 1.0,
+                "pixel_width": 256,
+                "pixel_height": 192,
+            },
+        },
+        script_path,
+    )
+    namespace = runpy.run_path(str(script_path))
+    observed_rows: list[int] = []
+    original_chebyshev = namespace["_chebyshev_matrix"]
+    original_fourier = namespace["_fourier_matrix"]
+
+    def tracked_chebyshev(*args):
+        observed_rows.append(args[0].size)
+        return original_chebyshev(*args)
+
+    def tracked_fourier(*args):
+        observed_rows.append(args[0].size)
+        return original_fourier(*args)
+
+    function_globals = namespace["reconstruct"].__globals__
+    function_globals["_chebyshev_matrix"] = tracked_chebyshev
+    function_globals["_fourier_matrix"] = tracked_fourier
+    image = namespace["reconstruct"](256, 192)
+    assert np.asarray(image).shape == (192, 256, 3)
+    assert observed_rows
+    assert max(observed_rows) <= 4096
+
+
 def test_mode_b_codec_validates_basis_coefficient_and_partition_shapes() -> None:
     payload = serialize_mode_b_model(
         _mode_b_context().global_model,

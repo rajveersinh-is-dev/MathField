@@ -70,26 +70,32 @@ def _fourier_matrix(X, Y, frequencies):
 def _dct_matrix(X, Y, freq_x, freq_y, x_bounds, y_bounds):
     x_norm = (X.ravel() - x_bounds[0]) / (x_bounds[1] - x_bounds[0])
     y_norm = (Y.ravel() - y_bounds[0]) / (y_bounds[1] - y_bounds[0])
+    cos_x = np.ones((freq_x + 1, X.size), dtype=np.float64)
+    cos_y = np.ones((freq_y + 1, X.size), dtype=np.float64)
+    for p in range(1, freq_x + 1):
+        cos_x[p] = np.cos(p * np.pi * x_norm)
+    for q in range(1, freq_y + 1):
+        cos_y[q] = np.cos(q * np.pi * y_norm)
     matrix = np.empty((X.size, (freq_x + 1) * (freq_y + 1)), dtype=np.float64)
     sqrt_two = np.sqrt(2.0)
     term = 0
     for p in range(freq_x + 1):
-        cos_p = np.cos(p * np.pi * x_norm) if p > 0 else np.ones(X.size)
         alpha_p = 1.0 if p == 0 else sqrt_two
         for q in range(freq_y + 1):
-            cos_q = np.cos(q * np.pi * y_norm) if q > 0 else np.ones(X.size)
             alpha_q = 1.0 if q == 0 else sqrt_two
-            matrix[:, term] = (alpha_p * alpha_q) * (cos_p * cos_q)
+            matrix[:, term] = (alpha_p * alpha_q) * (cos_x[p] * cos_y[q])
             term += 1
     return matrix
 
 
-def _partition_weights(X, Y, bounds, overlap_ratio, separable):
+def _partition_chunks(X, Y, bounds, overlap_ratio, separable):
     patch_count = len(bounds)
     if patch_count == 0:
-        return np.empty((0,) + X.shape, dtype=np.float64)
+        return
     if patch_count == 1:
-        return np.ones((1,) + X.shape, dtype=np.float64)
+        indices = np.arange(X.size)
+        yield 0, indices, np.ones(X.size, dtype=np.float64)
+        return
     x_flat = X.ravel()
     y_flat = Y.ravel()
     centers = np.column_stack(
@@ -100,37 +106,55 @@ def _partition_weights(X, Y, bounds, overlap_ratio, separable):
     )
 
     def build(factor):
-        radius_x = factor * np.maximum(half_widths[:, 0], 1e-6)
-        radius_y = factor * np.maximum(half_widths[:, 1], 1e-6)
-        dx = (x_flat[None, :] - centers[:, 0:1]) / radius_x[:, None]
-        dy = (y_flat[None, :] - centers[:, 1:2]) / radius_y[:, None]
-        if separable:
-            adx = np.minimum(np.abs(dx), 1.0)
-            ady = np.minimum(np.abs(dy), 1.0)
-            inside = (np.abs(dx) <= 1.0 + 1e-12) & (np.abs(dy) <= 1.0 + 1e-12)
-            wx = ((1.0 - adx) ** 4.0) * (4.0 * adx + 1.0)
-            wy = ((1.0 - ady) ** 4.0) * (4.0 * ady + 1.0)
-            return np.where(inside, wx * wy, 0.0)
-        radius = np.sqrt(dx * dx + dy * dy)
-        scaled = np.minimum(radius, 1.0)
-        return np.where(radius <= 1.0 + 1e-12, ((1.0 - scaled) ** 4.0) * (4.0 * scaled + 1.0), 0.0)
+        sum_weights = np.zeros(X.size, dtype=np.float64)
+        sparse = []
+        for k in range(patch_count):
+            radius_x = factor * max(half_widths[k, 0], 1e-6)
+            radius_y = factor * max(half_widths[k, 1], 1e-6)
+            dx = (x_flat - centers[k, 0]) / radius_x
+            dy = (y_flat - centers[k, 1]) / radius_y
+            if separable:
+                adx = np.minimum(np.abs(dx), 1.0)
+                ady = np.minimum(np.abs(dy), 1.0)
+                inside = (np.abs(dx) <= 1.0 + 1e-12) & (np.abs(dy) <= 1.0 + 1e-12)
+                wx = ((1.0 - adx) ** 4.0) * (4.0 * adx + 1.0)
+                wy = ((1.0 - ady) ** 4.0) * (4.0 * ady + 1.0)
+                values = np.where(inside, wx * wy, 0.0)
+            else:
+                radius = np.sqrt(dx * dx + dy * dy)
+                scaled = np.minimum(radius, 1.0)
+                values = np.where(radius <= 1.0 + 1e-12, ((1.0 - scaled) ** 4.0) * (4.0 * scaled + 1.0), 0.0)
+            indices = np.flatnonzero(values > 0.0)
+            selected = values[indices]
+            sparse.append((indices, selected))
+            sum_weights[indices] += selected
+        return sum_weights, sparse
 
     factor = 1.0 + max(overlap_ratio, 1e-6)
-    weights = build(factor)
+    sum_weights, sparse = build(factor)
     for _ in range(12):
-        if np.all(np.sum(weights, axis=0) > 1e-12):
+        if np.all(sum_weights > 1e-12):
             break
         factor *= 1.25
-        weights = build(factor)
-    zero_mask = np.sum(weights, axis=0) <= 1e-12
+        sum_weights, sparse = build(factor)
+    zero_mask = sum_weights <= 1e-12
     if np.any(zero_mask):
-        zx = x_flat[zero_mask]
-        zy = y_flat[zero_mask]
+        zero_indices = np.flatnonzero(zero_mask)
+        zx = x_flat[zero_indices]
+        zy = y_flat[zero_indices]
         distance_squared = (centers[:, 0:1] - zx[None, :]) ** 2 + (centers[:, 1:2] - zy[None, :]) ** 2
         scale = max(float(np.max(distance_squared)), 1e-12)
-        weights[:, zero_mask] = np.exp(-distance_squared / scale)
-    weights = weights / np.maximum(np.sum(weights, axis=0), 1e-300)
-    return weights.reshape((patch_count,) + X.shape)
+        fallback = np.exp(-distance_squared / scale)
+        for k in range(patch_count):
+            selected = fallback[k] > 0.0
+            indices, values = sparse[k]
+            sparse[k] = (
+                np.concatenate((indices, zero_indices[selected])),
+                np.concatenate((values, fallback[k, selected])),
+            )
+            sum_weights[zero_indices[selected]] += fallback[k, selected]
+    for k, (indices, values) in enumerate(sparse):
+        yield k, indices, values / np.maximum(sum_weights[indices], 1e-300)
 '''
 
 
@@ -204,26 +228,42 @@ def _mode_b_script_source(payload: Dict[str, Any], domain: Dict[str, Any]) -> st
                 )
 
     render_logic = '''
-    phi_chebyshev = _chebyshev_matrix(X, Y, cheb_deg_x, cheb_deg_y, cheb_truncation)
-    phi_fourier = _fourier_matrix(X, Y, fourier_frequencies)
-    if include_fourier_dc:
-        phi_global = np.hstack((phi_chebyshev, phi_fourier))
-    else:
-        phi_global = np.hstack((phi_chebyshev, phi_fourier[:, 1:]))
-    global_values = np.empty((X.size, channel_count), dtype=np.float64)
-    for channel in range(channel_count):
-        global_values[:, channel] = phi_global @ global_coefficients[:, channel]
-    composite = global_values.reshape(height, width, channel_count)
+    composite = np.empty((height, width, channel_count), dtype=np.float64)
+    sample_block = max(global_coefficients.shape[0], 4096)
+    row_block = max(1, sample_block // max(width, 1))
+    for row_start in range(0, height, row_block):
+        row_stop = min(row_start + row_block, height)
+        sub_x = X[row_start:row_stop]
+        sub_y = Y[row_start:row_stop]
+        phi_chebyshev = _chebyshev_matrix(sub_x, sub_y, cheb_deg_x, cheb_deg_y, cheb_truncation)
+        phi_fourier = _fourier_matrix(sub_x, sub_y, fourier_frequencies)
+        if include_fourier_dc:
+            phi_global = np.hstack((phi_chebyshev, phi_fourier))
+        else:
+            phi_global = np.hstack((phi_chebyshev, phi_fourier[:, 1:]))
+        block_values = phi_global @ global_coefficients
+        composite[row_start:row_stop] = block_values.reshape(row_stop - row_start, width, channel_count)
     local_correction = np.zeros_like(composite)
-    weights = _partition_weights(X, Y, patch_bounds, overlap_ratio, separable)
-    for patch_index in range(len(patch_bounds)):
+    for patch_index, flat_indices, flat_weights in _partition_chunks(
+        X, Y, patch_bounds, overlap_ratio, separable
+    ):
+        active = flat_weights > 1e-12
+        if not np.any(active):
+            continue
+        flat_indices = flat_indices[active]
+        flat_weights = flat_weights[active]
+        rows, cols = np.divmod(flat_indices, width)
+        row_start, row_stop = int(rows.min()), int(rows.max()) + 1
+        col_start, col_stop = int(cols.min()), int(cols.max()) + 1
         bounds = patch_bounds[patch_index]
         center_x = 0.5 * (bounds[0] + bounds[2])
         center_y = 0.5 * (bounds[1] + bounds[3])
         half_x = max(0.5 * (bounds[2] - bounds[0]), 1e-12)
         half_y = max(0.5 * (bounds[3] - bounds[1]), 1e-12)
-        local_x = (X - center_x) / half_x
-        local_y = (Y - center_y) / half_y
+        sub_x = X[row_start:row_stop, col_start:col_stop]
+        sub_y = Y[row_start:row_stop, col_start:col_stop]
+        local_x = (sub_x - center_x) / half_x
+        local_y = (sub_y - center_y) / half_y
         spec = patch_basis_specs[patch_index]
         if spec["type"] == "chebyshev2d":
             phi_patch = _chebyshev_matrix(local_x, local_y, spec["deg_x"], spec["deg_y"], spec["truncation"])
@@ -238,11 +278,11 @@ def _mode_b_script_source(payload: Dict[str, Any], domain: Dict[str, Any]) -> st
             )
         else:
             phi_patch = _fourier_matrix(local_x, local_y, patch_fourier_frequencies[patch_index])
-        patch_values = np.empty((X.size, channel_count), dtype=np.float64)
-        for channel in range(channel_count):
-            patch_values[:, channel] = phi_patch @ patch_coefficients[patch_index][:, channel]
-        patch_image = patch_values.reshape(height, width, channel_count)
-        local_correction += weights[patch_index, :, :, None] * patch_image
+        patch_values = phi_patch @ patch_coefficients[patch_index]
+        patch_image = patch_values.reshape(row_stop - row_start, col_stop - col_start, channel_count)
+        sub_weights = np.zeros((row_stop - row_start, col_stop - col_start), dtype=np.float64)
+        sub_weights[rows - row_start, cols - col_start] = flat_weights
+        local_correction[row_start:row_stop, col_start:col_stop] += sub_weights[:, :, None] * patch_image
     composite = np.clip(composite + local_correction, 0.0, 1.0)
     if channel_count == 1:
         pixels = np.clip(composite[:, :, 0] * 255.0, 0.0, 255.0).astype(np.uint8)
