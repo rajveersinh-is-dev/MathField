@@ -138,7 +138,7 @@ flowchart TD
 ## Testing and verification
 
 ```powershell
-python -m pytest                 # 620 tests: 266 unit + 354 end-to-end
+python -m pytest                 # 664 tests: 310 unit + 354 end-to-end
 python -m pytest tests/          # unit / integration suite
 python -m pytest -m tier1        # feature-coverage e2e tier
 python -m ruff check .           # static analysis
@@ -167,7 +167,7 @@ report = run_benchmarks(image, warmup_runs=3, timed_runs=7)
 
 * **Zero preloaded answers** — no lookup tables, hardcoded coefficients or memorised image approximations.
 * **Dynamic first-principles evaluation** — metrics, benchmarks and exported formulas are computed from the fitted model at run time.
-* **Verifiable reproducibility** — generated bundles contain deterministic archives and scripts that evaluate the exported equations without importing MathField. The full local-patch model is preserved in the `.mathfield` project file, and CLI bundles verify reproduced pixels against the delivered reconstruction.
+* **Verifiable reproducibility** — generated bundles contain deterministic archives and scripts that evaluate the exported equations without importing MathField. The full local-patch model is preserved in compact schema-1.1 `.mathfield` projects, legacy schema-1.0 files remain loadable, and CLI bundles verify reproduced pixels against the delivered reconstruction.
 * **Visible alpha policy** — RGBA color fitting and headline fidelity metrics ignore fully transparent RGB, fit and report alpha separately, and retain raw straight-RGBA diagnostics for inspection.
 
 Draft manuscript: [`docs/paper/mathfield_paper.tex`](docs/paper/mathfield_paper.tex).
