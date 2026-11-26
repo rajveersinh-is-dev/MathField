@@ -16,6 +16,11 @@ from typing import Any, Dict, Optional, Sequence, Tuple, Union
 import numpy as np
 
 from mathfield.core.ast.nodes import ASTNode
+from mathfield.core.model_codec import (
+    deserialize_mode_b_model,
+    is_mode_b_global_model,
+    serialize_mode_b_model,
+)
 
 SCHEMA_VERSION: str = "1.0.0"
 SUPPORTED_BIT_GENERATORS = {"PCG64", "PCG64DXSM", "Philox", "SFC64", "MT19937"}
@@ -294,14 +299,37 @@ class CheckpointSerializer:
         }
 
         if context.global_model and isinstance(context.global_model, dict):
-            if "symbolic_ast" in context.global_model and hasattr(context.global_model["symbolic_ast"], "to_dict"):
-                ast_node = context.global_model["symbolic_ast"]
-                payload["ast_trees"]["symbolic_ast"] = cls.serialize_ast(ast_node)
-                payload["expressions"]["symbolic"] = str(ast_node)
-            if "channel_asts" in context.global_model:
-                for idx, ast_node in enumerate(context.global_model["channel_asts"]):
-                    payload["ast_trees"][f"channel_{idx}"] = cls.serialize_ast(ast_node)
-                    payload["expressions"][f"channel_{idx}"] = str(ast_node)
+            if is_mode_b_global_model(context.global_model):
+                image = np.asarray(context.image)
+                channel_count = image.shape[2] if image.ndim == 3 else 1
+                default_labels = {1: ["Y"], 3: ["R", "G", "B"], 4: ["R", "G", "B", "A"]}
+                channel_labels = default_labels.get(channel_count)
+                config = context.config if isinstance(context.config, dict) else {}
+                local_decomposition = context.local_decomposition
+                has_partition = isinstance(local_decomposition, dict) and any(
+                    key in local_decomposition for key in ("partition_of_unity", "partition", "pou")
+                )
+                partition = None
+                if not has_partition:
+                    partition = {
+                        "overlap_ratio": float(config.get("overlap_ratio", 0.20)),
+                        "separable": bool(config.get("separable", True)),
+                    }
+                payload["mode_b_model"] = serialize_mode_b_model(
+                    context.global_model,
+                    local_decomposition,
+                    channel_labels=channel_labels,
+                    partition=partition,
+                )
+            else:
+                if "symbolic_ast" in context.global_model and hasattr(context.global_model["symbolic_ast"], "to_dict"):
+                    ast_node = context.global_model["symbolic_ast"]
+                    payload["ast_trees"]["symbolic_ast"] = cls.serialize_ast(ast_node)
+                    payload["expressions"]["symbolic"] = str(ast_node)
+                if "channel_asts" in context.global_model:
+                    for idx, ast_node in enumerate(context.global_model["channel_asts"]):
+                        payload["ast_trees"][f"channel_{idx}"] = cls.serialize_ast(ast_node)
+                        payload["expressions"][f"channel_{idx}"] = str(ast_node)
 
         if rng is not None:
             payload["rng_state"] = cls.serialize_rng_state(rng)
@@ -315,6 +343,11 @@ class CheckpointSerializer:
         """
         if "metrics" in data and isinstance(data["metrics"], dict):
             context.metrics.update(data["metrics"])
+
+        if data.get("mode_b_model") is not None:
+            global_model, local_decomposition = deserialize_mode_b_model(data["mode_b_model"])
+            context.global_model = global_model
+            context.local_decomposition = local_decomposition
 
         if "ast_trees" in data and isinstance(data["ast_trees"], dict):
             if context.global_model is None:

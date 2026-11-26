@@ -9,11 +9,312 @@ from __future__ import annotations
 import re
 import warnings
 from pathlib import Path
-from typing import Any, List, Union
+from typing import Any, Dict, List, Union
+
+import numpy as np
 
 from mathfield.core.ast.parser import parse
 from mathfield.core.codegen.numpy_gen import to_python_code
+from mathfield.core.model_codec import mode_b_payload_from_result
 from mathfield.export.raster import natural_key
+
+_MODE_B_HELPERS = '''def _chebyshev_indices(deg_x, deg_y, truncation):
+    indices = []
+    max_degree = max(deg_x, deg_y)
+    for i in range(deg_x + 1):
+        for j in range(deg_y + 1):
+            if truncation == "total_degree" and i + j > max_degree:
+                continue
+            if truncation == "hyperbolic_cross" and (i + 1) * (j + 1) > max_degree + 1:
+                continue
+            indices.append((i, j))
+    return indices
+
+
+def _chebyshev_matrix(X, Y, deg_x, deg_y, truncation):
+    x_flat = X.ravel()
+    y_flat = Y.ravel()
+    tx = np.zeros((x_flat.size, deg_x + 1), dtype=np.float64)
+    ty = np.zeros((y_flat.size, deg_y + 1), dtype=np.float64)
+    tx[:, 0] = 1.0
+    ty[:, 0] = 1.0
+    if deg_x >= 1:
+        tx[:, 1] = x_flat
+        for degree in range(2, deg_x + 1):
+            tx[:, degree] = 2.0 * x_flat * tx[:, degree - 1] - tx[:, degree - 2]
+    if deg_y >= 1:
+        ty[:, 1] = y_flat
+        for degree in range(2, deg_y + 1):
+            ty[:, degree] = 2.0 * y_flat * ty[:, degree - 1] - ty[:, degree - 2]
+    indices = _chebyshev_indices(deg_x, deg_y, truncation)
+    matrix = np.empty((x_flat.size, len(indices)), dtype=np.float64)
+    for term, (i, j) in enumerate(indices):
+        matrix[:, term] = tx[:, i] * ty[:, j]
+    return matrix
+
+
+def _fourier_matrix(X, Y, frequencies):
+    x_flat = X.ravel()
+    y_flat = Y.ravel()
+    matrix = np.empty((x_flat.size, 1 + 2 * len(frequencies)), dtype=np.float64)
+    matrix[:, 0] = 1.0
+    column = 1
+    for kx, ky in frequencies:
+        argument = kx * np.pi * x_flat + ky * np.pi * y_flat
+        matrix[:, column] = np.cos(argument)
+        matrix[:, column + 1] = np.sin(argument)
+        column += 2
+    return matrix
+
+
+def _dct_matrix(X, Y, freq_x, freq_y, x_bounds, y_bounds):
+    x_norm = (X.ravel() - x_bounds[0]) / (x_bounds[1] - x_bounds[0])
+    y_norm = (Y.ravel() - y_bounds[0]) / (y_bounds[1] - y_bounds[0])
+    matrix = np.empty((X.size, (freq_x + 1) * (freq_y + 1)), dtype=np.float64)
+    sqrt_two = np.sqrt(2.0)
+    term = 0
+    for p in range(freq_x + 1):
+        cos_p = np.cos(p * np.pi * x_norm) if p > 0 else np.ones(X.size)
+        alpha_p = 1.0 if p == 0 else sqrt_two
+        for q in range(freq_y + 1):
+            cos_q = np.cos(q * np.pi * y_norm) if q > 0 else np.ones(X.size)
+            alpha_q = 1.0 if q == 0 else sqrt_two
+            matrix[:, term] = (alpha_p * alpha_q) * (cos_p * cos_q)
+            term += 1
+    return matrix
+
+
+def _partition_weights(X, Y, bounds, overlap_ratio, separable):
+    patch_count = len(bounds)
+    if patch_count == 0:
+        return np.empty((0,) + X.shape, dtype=np.float64)
+    if patch_count == 1:
+        return np.ones((1,) + X.shape, dtype=np.float64)
+    x_flat = X.ravel()
+    y_flat = Y.ravel()
+    centers = np.column_stack(
+        (0.5 * (bounds[:, 0] + bounds[:, 2]), 0.5 * (bounds[:, 1] + bounds[:, 3]))
+    )
+    half_widths = np.column_stack(
+        (0.5 * (bounds[:, 2] - bounds[:, 0]), 0.5 * (bounds[:, 3] - bounds[:, 1]))
+    )
+
+    def build(factor):
+        radius_x = factor * np.maximum(half_widths[:, 0], 1e-6)
+        radius_y = factor * np.maximum(half_widths[:, 1], 1e-6)
+        dx = (x_flat[None, :] - centers[:, 0:1]) / radius_x[:, None]
+        dy = (y_flat[None, :] - centers[:, 1:2]) / radius_y[:, None]
+        if separable:
+            adx = np.minimum(np.abs(dx), 1.0)
+            ady = np.minimum(np.abs(dy), 1.0)
+            inside = (np.abs(dx) <= 1.0 + 1e-12) & (np.abs(dy) <= 1.0 + 1e-12)
+            wx = ((1.0 - adx) ** 4.0) * (4.0 * adx + 1.0)
+            wy = ((1.0 - ady) ** 4.0) * (4.0 * ady + 1.0)
+            return np.where(inside, wx * wy, 0.0)
+        radius = np.sqrt(dx * dx + dy * dy)
+        scaled = np.minimum(radius, 1.0)
+        return np.where(radius <= 1.0 + 1e-12, ((1.0 - scaled) ** 4.0) * (4.0 * scaled + 1.0), 0.0)
+
+    factor = 1.0 + max(overlap_ratio, 1e-6)
+    weights = build(factor)
+    for _ in range(12):
+        if np.all(np.sum(weights, axis=0) > 1e-12):
+            break
+        factor *= 1.25
+        weights = build(factor)
+    zero_mask = np.sum(weights, axis=0) <= 1e-12
+    if np.any(zero_mask):
+        zx = x_flat[zero_mask]
+        zy = y_flat[zero_mask]
+        distance_squared = (centers[:, 0:1] - zx[None, :]) ** 2 + (centers[:, 1:2] - zy[None, :]) ** 2
+        scale = max(float(np.max(distance_squared)), 1e-12)
+        weights[:, zero_mask] = np.exp(-distance_squared / scale)
+    weights = weights / np.maximum(np.sum(weights, axis=0), 1e-300)
+    return weights.reshape((patch_count,) + X.shape)
+'''
+
+
+def _coefficient_assignment_lines(variable: str, coefficients: Any, indent: str = "    ") -> List[str]:
+    array = np.asarray(coefficients, dtype=np.float64)
+    matrix = array.reshape(-1, 1) if array.ndim == 1 else array
+    lines = [f"{indent}{variable} = np.empty({matrix.shape!r}, dtype=np.float64)"]
+    for term in range(matrix.shape[0]):
+        for channel in range(matrix.shape[1]):
+            lines.append(f"{indent}{variable}[{term}, {channel}] = {float(matrix[term, channel]):.17g}")
+    return lines
+
+
+def _mode_b_script_source(payload: Dict[str, Any], domain: Dict[str, Any]) -> str:
+    """Emit scalar model assignments plus pure NumPy global/local evaluation."""
+    basis = payload["global_basis"]
+    chebyshev = basis["chebyshev"]
+    fourier = basis["fourier"]
+    frequencies = np.asarray(fourier["frequencies"], dtype=np.float64).reshape(-1, 2)
+    coefficients = np.asarray(payload["coefficients"], dtype=np.float64)
+    coefficient_matrix = coefficients.reshape(-1, 1) if coefficients.ndim == 1 else coefficients
+    patches = payload["local_patches"]
+    partition = payload["partition_of_unity"]
+
+    lines = [
+        f"    cheb_deg_x = {int(chebyshev['deg_x'])}",
+        f"    cheb_deg_y = {int(chebyshev['deg_y'])}",
+        f"    cheb_truncation = {chebyshev['truncation']!r}",
+        f"    include_fourier_dc = {bool(basis['include_fourier_dc'])!r}",
+        f"    channel_count = {coefficient_matrix.shape[1]}",
+        f"    overlap_ratio = {float(partition['overlap_ratio']):.17g}",
+        f"    separable = {bool(partition['separable'])!r}",
+        f"    fourier_frequencies = np.empty({frequencies.shape!r}, dtype=np.float64)",
+    ]
+    for term in range(frequencies.shape[0]):
+        for axis in range(2):
+            lines.append(f"    fourier_frequencies[{term}, {axis}] = {float(frequencies[term, axis]):.17g}")
+    lines.extend(_coefficient_assignment_lines("global_coefficients", coefficient_matrix))
+
+    if patches:
+        lines.append(f"    patch_bounds = np.empty({(len(patches), 4)!r}, dtype=np.float64)")
+        for patch_index, patch in enumerate(patches):
+            for axis, value in enumerate(patch["bounds"]):
+                lines.append(f"    patch_bounds[{patch_index}, {axis}] = {float(value):.17g}")
+    else:
+        lines.append("    patch_bounds = np.empty((0, 4), dtype=np.float64)")
+
+    lines.extend(["    patch_basis_specs = []", "    patch_fourier_frequencies = []", "    patch_coefficients = []"])
+    for patch in patches:
+        config = patch["basis"]
+        spec = {key: value for key, value in config.items() if key != "frequencies"}
+        lines.append(f"    patch_basis_specs.append({spec!r})")
+        if config["type"] == "fourier2d":
+            patch_frequencies = np.asarray(config["frequencies"], dtype=np.float64).reshape(-1, 2)
+            lines.append(f"    patch_fourier_frequencies.append(np.empty({patch_frequencies.shape!r}, dtype=np.float64))")
+            for term in range(patch_frequencies.shape[0]):
+                for axis in range(2):
+                    lines.append(
+                        "    patch_fourier_frequencies[-1]"
+                        f"[{term}, {axis}] = {float(patch_frequencies[term, axis]):.17g}"
+                    )
+        else:
+            lines.append("    patch_fourier_frequencies.append(None)")
+        patch_coefficients = np.asarray(patch["coefficients"], dtype=np.float64)
+        patch_matrix = patch_coefficients.reshape(-1, 1) if patch_coefficients.ndim == 1 else patch_coefficients
+        lines.append(f"    patch_coefficients.append(np.empty({patch_matrix.shape!r}, dtype=np.float64))")
+        for term in range(patch_matrix.shape[0]):
+            for channel in range(patch_matrix.shape[1]):
+                lines.append(
+                    f"    patch_coefficients[-1][{term}, {channel}] = {float(patch_matrix[term, channel]):.17g}"
+                )
+
+    render_logic = '''
+    phi_chebyshev = _chebyshev_matrix(X, Y, cheb_deg_x, cheb_deg_y, cheb_truncation)
+    phi_fourier = _fourier_matrix(X, Y, fourier_frequencies)
+    if include_fourier_dc:
+        phi_global = np.hstack((phi_chebyshev, phi_fourier))
+    else:
+        phi_global = np.hstack((phi_chebyshev, phi_fourier[:, 1:]))
+    global_values = np.empty((X.size, channel_count), dtype=np.float64)
+    for channel in range(channel_count):
+        global_values[:, channel] = phi_global @ global_coefficients[:, channel]
+    composite = global_values.reshape(height, width, channel_count)
+    local_correction = np.zeros_like(composite)
+    weights = _partition_weights(X, Y, patch_bounds, overlap_ratio, separable)
+    for patch_index in range(len(patch_bounds)):
+        bounds = patch_bounds[patch_index]
+        center_x = 0.5 * (bounds[0] + bounds[2])
+        center_y = 0.5 * (bounds[1] + bounds[3])
+        half_x = max(0.5 * (bounds[2] - bounds[0]), 1e-12)
+        half_y = max(0.5 * (bounds[3] - bounds[1]), 1e-12)
+        local_x = (X - center_x) / half_x
+        local_y = (Y - center_y) / half_y
+        spec = patch_basis_specs[patch_index]
+        if spec["type"] == "chebyshev2d":
+            phi_patch = _chebyshev_matrix(local_x, local_y, spec["deg_x"], spec["deg_y"], spec["truncation"])
+        elif spec["type"] == "dct2":
+            phi_patch = _dct_matrix(
+                local_x,
+                local_y,
+                spec["freq_x"],
+                spec["freq_y"],
+                spec["x_bounds"],
+                spec["y_bounds"],
+            )
+        else:
+            phi_patch = _fourier_matrix(local_x, local_y, patch_fourier_frequencies[patch_index])
+        patch_values = np.empty((X.size, channel_count), dtype=np.float64)
+        for channel in range(channel_count):
+            patch_values[:, channel] = phi_patch @ patch_coefficients[patch_index][:, channel]
+        patch_image = patch_values.reshape(height, width, channel_count)
+        local_correction += weights[patch_index, :, :, None] * patch_image
+    composite = np.clip(composite + local_correction, 0.0, 1.0)
+    if channel_count == 1:
+        pixels = np.clip(composite[:, :, 0] * 255.0, 0.0, 255.0).astype(np.uint8)
+        img = Image.fromarray(pixels, mode="L")
+    else:
+        pixels = np.clip(composite * 255.0, 0.0, 255.0).astype(np.uint8)
+        mode = {2: "LA", 3: "RGB", 4: "RGBA"}.get(channel_count)
+        if mode is None:
+            raise ValueError("Unsupported Mode B channel count")
+        img = Image.fromarray(pixels, mode=mode)
+    return img
+'''
+    default_width = int(domain.get("pixel_width") or 64)
+    default_height = int(domain.get("pixel_height") or 64)
+    return f'''#!/usr/bin/env python3
+"""
+MathField Standalone Reproduction Script.
+Pure mathematical evaluation - zero MathField imports.
+"""
+
+import argparse
+import numpy as np
+from PIL import Image
+
+
+{_MODE_B_HELPERS}
+
+
+def reconstruct(width: int, height: int) -> Image.Image:
+    x = np.linspace({x_min_value(domain):.17g}, {x_max_value(domain):.17g}, width, dtype=np.float64)
+    y = np.linspace({y_min_value(domain):.17g}, {y_max_value(domain):.17g}, height, dtype=np.float64)
+    X, Y = np.meshgrid(x, y)
+{chr(10).join(lines)}
+{render_logic}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="MathField Standalone Image Reconstruction")
+    parser.add_argument("--output", "-o", type=str, default="reconstruction.png")
+    parser.add_argument(
+        "--resolution",
+        "-r",
+        nargs=2,
+        type=int,
+        default=[{default_width}, {default_height}],
+        metavar=("WIDTH", "HEIGHT"),
+    )
+    args = parser.parse_args()
+    width, height = args.resolution[0], args.resolution[1]
+    reconstruct(width=width, height=height).save(args.output)
+    print("Reconstruction finished successfully.")
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+
+def x_min_value(domain: Dict[str, Any]) -> float:
+    return float(domain.get("x_min", -1.0))
+
+
+def x_max_value(domain: Dict[str, Any]) -> float:
+    return float(domain.get("x_max", 1.0))
+
+
+def y_min_value(domain: Dict[str, Any]) -> float:
+    return float(domain.get("y_min", -1.0))
+
+
+def y_max_value(domain: Dict[str, Any]) -> float:
+    return float(domain.get("y_max", 1.0))
 
 
 def export_standalone_script(
@@ -34,6 +335,11 @@ def export_standalone_script(
     x_max = float(domain.get("x_max", 1.0))
     y_min = float(domain.get("y_min", -1.0))
     y_max = float(domain.get("y_max", 1.0))
+
+    mode_b_payload = mode_b_payload_from_result(model)
+    if mode_b_payload is not None:
+        out_p.write_text(_mode_b_script_source(mode_b_payload, domain), encoding="utf-8")
+        return
 
     expressions = {}
     if isinstance(model, dict):
@@ -117,13 +423,19 @@ def export_standalone_script(
     required_count = max(32, max(used_indices) + 1) if used_indices else len(params_list)
     if len(params_list) < required_count:
         params_list = params_list + [0.0] * (required_count - len(params_list))
-    params_code = "[" + ", ".join(f"{p:.17g}" for p in params_list) + "]"
-
-    params_line = (
-        f"    params = np.array({params_code}, dtype=np.float64)\n"
-        if "params[" in render_logic
-        else (f"    _params = np.array({params_code}, dtype=np.float64)\n" if params_list else "")
-    )
+    if "params[" in render_logic:
+        parameter_name = "params"
+    elif params_list:
+        parameter_name = "_params"
+    else:
+        parameter_name = ""
+    parameter_lines: List[str] = []
+    if parameter_name:
+        parameter_lines.append(f"    {parameter_name} = np.empty({required_count}, dtype=np.float64)")
+        for index in range(required_count):
+            value = params_list[index] if index < len(params_list) else 0.0
+            parameter_lines.append(f"    {parameter_name}[{index}] = {value:.17g}")
+    params_line = "\n".join(parameter_lines) + ("\n" if parameter_lines else "")
 
     script_content = f'''#!/usr/bin/env python3
 """

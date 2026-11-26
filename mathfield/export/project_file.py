@@ -13,6 +13,8 @@ from typing import Any, Dict, Union
 
 import numpy as np
 
+from mathfield.core.model_codec import validate_mode_b_model
+
 
 class ProjectFileError(Exception):
     """Raised when a .mathfield project file fails schema validation or corruption check."""
@@ -49,6 +51,12 @@ def validate_project_dict(data: Dict[str, Any]) -> None:
         raise ProjectFileError("'global_model' must be an object.")
     if "channels" not in model or not isinstance(model["channels"], list):
         raise ProjectFileError("'global_model' must contain a 'channels' array.")
+
+    if data.get("mode_b_model") is not None:
+        try:
+            validate_mode_b_model(data["mode_b_model"])
+        except ValueError as exc:
+            raise ProjectFileError(f"Invalid Mode B model payload: {exc}") from exc
 
     metrics = data["final_metrics"]
     if not isinstance(metrics, dict):

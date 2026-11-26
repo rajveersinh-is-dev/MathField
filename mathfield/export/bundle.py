@@ -8,17 +8,26 @@ and compiled reports into an independently verifiable directory or zip archive.
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any, Dict, Union
 
+import numpy as np
+
+from mathfield.core.model_codec import (
+    mode_b_channel_records,
+    mode_b_parameter_table,
+    mode_b_payload_from_result,
+)
 from mathfield.export.csv_export import export_csv_parameters
 from mathfield.export.latex_report import export_latex_report
 from mathfield.export.pdf_report import export_pdf_report
 from mathfield.export.project_file import save_project
 from mathfield.export.python_script import export_standalone_script
+from mathfield.export.raster import _model_to_image, to_uint8_array
 
 
 def export_bundle(
@@ -47,24 +56,38 @@ def export_bundle(
         reproduce_path = temp_dir / "reproduce.py"
         export_standalone_script(result, reproduce_path)
 
-        # 2. verify.py - verifies the *exported model*, not a canned formula.
+        # 2. verify.py - compares the standalone render with the delivered,
+        # quantized reference pixels without adding another bundle asset.
         verify_path = temp_dir / "verify.py"
         domain_data = result.get("coordinate_domain", {})
-        width = int(domain_data.get("pixel_width") or 64)
-        height = int(domain_data.get("pixel_height") or 64)
-        # The standalone script reproduces the *global analytical component*.
-        # The full fidelity reconstruction additionally uses adaptive local
-        # patches stored in the .mathfield project, so no false parity between
-        # the two is asserted here.
+        rendered_reference = result.get("rendered_image")
+        if rendered_reference is not None:
+            reference_shape = np.asarray(rendered_reference).shape
+            width = int(domain_data.get("pixel_width") or reference_shape[1])
+            height = int(domain_data.get("pixel_height") or reference_shape[0])
+        else:
+            width = int(domain_data.get("pixel_width") or 64)
+            height = int(domain_data.get("pixel_height") or 64)
         metrics = {k: float(v) for k, v in (result.get("metrics") or {}).items() if isinstance(v, (int, float))}
         if "mse" not in metrics and "psnr" not in metrics:
             # Empty/minimal models have no measured fidelity metrics. Mark them
             # explicitly rather than inventing numbers.
             metrics = {"mse": 0.0, "psnr": 100.0, "metrics_available": False}
+        reference_available = rendered_reference is not None
+        reference_digest = None
+        reference_pixel_shape = None
+        if reference_available:
+            reference_image = _model_to_image(result, width=width, height=height)
+            reference_pixels = to_uint8_array(np.asarray(reference_image))
+            reference_pixel_shape = list(reference_pixels.shape)
+            reference_digest = hashlib.sha256(np.ascontiguousarray(reference_pixels).tobytes()).hexdigest()
         verify_payload = {
             "width": width,
             "height": height,
             "metrics": metrics,
+            "reference_available": reference_available,
+            "reference_sha256": reference_digest,
+            "reference_shape": reference_pixel_shape,
         }
         verify_code = f'''#!/usr/bin/env python3
 """
@@ -73,6 +96,7 @@ Verifies the exported reproduction model without importing MathField.
 Requires only numpy, Pillow and the bundled reproduce.py.
 """
 
+import hashlib
 import sys
 import numpy as np
 from reproduce import reconstruct
@@ -83,19 +107,27 @@ CONTEXT = {verify_payload!r}
 def run_verification() -> bool:
     print("Verifying exported mathematical model...")
     w, h = CONTEXT["width"], CONTEXT["height"]
-    first = np.asarray(reconstruct(w, h), dtype=np.float64)
+    first_image = reconstruct(w, h)
+    first = np.asarray(first_image, dtype=np.float64)
     second = np.asarray(reconstruct(w, h), dtype=np.float64)
     assert first.shape[:2] == (h, w), f"Unexpected reconstruction shape {{first.shape}}"
     assert np.all(np.isfinite(first)), "Numerical divergence in reproduction"
     assert np.array_equal(first, second), "Reproduction is not deterministic"
     if first.ndim == 3:
-        assert first.shape[2] in (3, 4), f"Unexpected channel count {{first.shape[2]}}"
+        assert first.shape[2] in (1, 2, 3, 4), f"Unexpected channel count {{first.shape[2]}}"
     for name in ("psnr", "mse", "ssim"):
         if name in CONTEXT["metrics"]:
             assert np.isfinite(CONTEXT["metrics"][name]), f"Invalid metric: {{name}}"
-    print("Note: reproduce.py evaluates the global analytical component; adaptive local patches are stored in project.mathfield.")
+    if CONTEXT["reference_available"]:
+        quantized = np.asarray(first_image, dtype=np.uint8)
+        assert list(quantized.shape) == CONTEXT["reference_shape"], "Reference pixel shape mismatch"
+        digest = hashlib.sha256(np.ascontiguousarray(quantized).tobytes()).hexdigest()
+        assert digest == CONTEXT["reference_sha256"], "Reproduced pixels differ from the delivered reference"
+        print("Rendered pixel parity PASSED (complete global and local composite).")
+    else:
+        print("No rendered reference was supplied; pixel parity is not asserted.")
     print("Exported model determinism and metadata verified.")
-    print("Determinism sanity check PASSED (model fidelity is reported in the PDF, not asserted here)")
+    print("Determinism sanity check PASSED")
     return True
 
 
@@ -106,6 +138,7 @@ if __name__ == "__main__":
 
         # 3. project.mathfield
         project_path = temp_dir / "project.mathfield"
+        mode_b_payload = mode_b_payload_from_result(result)
         raw_params = result.get("parameters") or {}
         if isinstance(raw_params, dict):
             param_values = [
@@ -114,6 +147,8 @@ if __name__ == "__main__":
             ]
         else:
             param_values = [float(v) for v in raw_params]
+        if mode_b_payload is not None:
+            raw_params = mode_b_parameter_table(mode_b_payload)
         # Ensure project dictionary conforms to schema
         proj_dict = {
             "schema_version": "1.0.0",
@@ -125,13 +160,13 @@ if __name__ == "__main__":
                     "x_max": 1.0,
                     "y_min": -1.0,
                     "y_max": 1.0,
-                    "pixel_width": 64,
-                    "pixel_height": 64,
-                    "aspect_ratio": 1.0,
+                    "pixel_width": width,
+                    "pixel_height": height,
+                    "aspect_ratio": float(width / height),
                 },
             ),
             "color_space": result.get("color_space", "RGB"),
-            "mode": result.get("mode", "MODE_A_DISCOVERY"),
+            "mode": result.get("mode", "MODE_B_FIDELITY" if mode_b_payload is not None else "MODE_A_DISCOVERY"),
             "global_model": result.get(
                 "global_model",
                 {
@@ -148,11 +183,43 @@ if __name__ == "__main__":
             "final_metrics": metrics,
             "random_seed": int(result.get("random_seed", 42)),
         }
+        if mode_b_payload is not None:
+            global_model = dict(result.get("global_model") or {})
+            global_model["chebyshev_basis"] = mode_b_payload["global_basis"]["chebyshev"]
+            global_model["fourier_basis"] = mode_b_payload["global_basis"]["fourier"]
+            global_model["include_fourier_dc"] = mode_b_payload["global_basis"]["include_fourier_dc"]
+            global_model["coefficients"] = mode_b_payload["coefficients"]
+            global_model["channel_labels"] = mode_b_payload["channel_labels"]
+            channel_records = global_model.get("channels") or []
+            recorded_labels = [record.get("channel") for record in channel_records if isinstance(record, dict)]
+            if recorded_labels != mode_b_payload["channel_labels"]:
+                global_model["channels"] = mode_b_channel_records(mode_b_payload, result.get("expressions"))
+            global_model["local_patches_count"] = len(mode_b_payload["local_patches"])
+            proj_dict["basis_terms_count"] = int(
+                global_model.get("basis_terms_count", np.asarray(mode_b_payload["coefficients"]).shape[0])
+            )
+            proj_dict["global_model"] = global_model
+            proj_dict["mode_b_model"] = mode_b_payload
+            proj_dict["local_patches"] = mode_b_payload["local_patches"]
+            local_decomposition = dict(result.get("local_decomposition") or {})
+            local_decomposition["leaves_count"] = len(mode_b_payload["local_patches"])
+            local_decomposition["patches"] = mode_b_payload["local_patches"]
+            local_decomposition["partition_of_unity"] = mode_b_payload["partition_of_unity"]
+            proj_dict["local_decomposition"] = local_decomposition
+        proj_dict["parameters"] = raw_params
+        if "basis_terms_count" in result:
+            proj_dict["basis_terms_count"] = result["basis_terms_count"]
+        if "condition_report" in result:
+            proj_dict["condition_report"] = result["condition_report"]
+        if "status" in result:
+            proj_dict["status"] = result["status"]
         save_project(proj_dict, project_path)
 
         # 4. parameters.csv
         csv_path = temp_dir / "parameters.csv"
-        export_csv_parameters(result, csv_path)
+        csv_result = dict(result)
+        csv_result["parameters"] = raw_params
+        export_csv_parameters(csv_result, csv_path)
 
         # 5. report.pdf (invariant mode avoids embedded timestamps/IDs)
         from reportlab import rl_config
@@ -183,7 +250,7 @@ generated by **MathField** (A Research-Grade Mathematical Image Reconstruction E
 
 ## Reproduction Instructions
 1. Install Python 3.10+ with `numpy` and `Pillow`.
-2. Run `python verify.py` to verify mathematical stability.
+2. Run `python verify.py` to verify deterministic reproduction and rendered pixel parity when a reference is available.
 3. Run `python reproduce.py --output output.png --resolution 512 512` to render the image.
 """
         readme_path.write_text(readme_text, encoding="utf-8")

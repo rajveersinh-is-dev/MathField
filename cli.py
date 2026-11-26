@@ -19,6 +19,11 @@ import numpy as np
 from PIL import Image
 
 from mathfield.core.domain import CoordinateDomain2D, DomainMode
+from mathfield.core.model_codec import (
+    mode_b_channel_records,
+    mode_b_parameter_table,
+    serialize_mode_b_model,
+)
 from mathfield.core.pipeline.controller import ReconstructionController
 from mathfield.export.csv_export import export_csv_parameters
 from mathfield.export.latex_report import export_latex_report
@@ -150,10 +155,8 @@ def _format_mode_b_channel(
     standalone reproduction script can compile it. With human=True it uses
     conventional mathematical notation for reports and posters.
     """
-    if max_terms is None:
-        # Machine expressions must retain every non-negligible coefficient:
-        # truncating a large cancellation-heavy expansion corrupts the model.
-        max_terms = 8 if human else 100000
+    # Human reports may abbreviate; machine expressions never drop terms.
+    term_limit = (max_terms if max_terms is not None else 8) if human else None
     cheb = global_model.get("chebyshev_basis")
     fourier = global_model.get("fourier_basis")
     raw_coeffs = global_model.get("coefficients")
@@ -162,10 +165,11 @@ def _format_mode_b_channel(
     coeffs = np.asarray(raw_coeffs)
     c_vec = coeffs[:, channel] if coeffs.ndim == 2 else coeffs
 
+    threshold = 1e-4 if human else 0.0
     terms: List[Tuple[float, str]] = []
     for k, (i, j) in enumerate(cheb.indices):
         value = float(c_vec[k])
-        if abs(value) <= 1e-4:
+        if abs(value) <= threshold:
             continue
         if human:
             name = "1" if i == 0 and j == 0 else f"T_{i}(x)" if j == 0 else f"T_{j}(y)" if i == 0 else f"T_{i}(x)T_{j}(y)"
@@ -197,12 +201,13 @@ def _format_mode_b_channel(
             else:
                 arg += ")"
         for value, func in ((cos_v, "cos"), (sin_v, "sin")):
-            if abs(value) > 1e-4:
+            if abs(value) > threshold:
                 text = f"{value:+.17g}*{func}{arg}" if not human else f"{value:+.4f}·{func}{arg}"
                 terms.append((abs(value), text))
 
     terms.sort(key=lambda item: item[0], reverse=True)
-    leading = " ".join(text for _, text in terms[:max_terms])
+    selected_terms = terms if term_limit is None else terms[:term_limit]
+    leading = " ".join(text for _, text in selected_terms)
     return f"{leading} + ... [{len(terms)} active terms]" if human else (leading or "0.0")
 
 
@@ -277,65 +282,75 @@ def main(argv: List[str] | None = None) -> int:
     is_mode_a = norm_mode in ("discovery", "mode_a", "a")
     channel_labels = "RGBA" if color_space == "RGBA" else "RGB"
 
-    # Format global model
-    global_model = dict(context.global_model) if context.global_model else {}
-    channel_coefficients = global_model.pop("channel_coefficients", []) if is_mode_a else []
-    if "channels" not in global_model:
-        channels_list = []
-        if is_mode_a:
-            channel_asts = global_model.get("channel_asts") or []
-            channels_list = [
-                {"channel": label, "formula": str(ast), "parameters": [float(value) for value in coefficients]}
-                for label, ast, coefficients in zip(channel_labels, channel_asts, channel_coefficients, strict=True)
-            ]
-        else:
-            deg = global_model.get("degree", 6)
-            if "coefficients" in global_model and global_model["coefficients"] is not None:
-                actual = np.asarray(global_model["coefficients"])
-                flat_coeffs = actual[:, 0] if actual.ndim == 2 else actual.ravel()
-                params_vec = [float(x) for x in flat_coeffs]
-            else:
-                num_terms = int(global_model.get("basis_terms_count", (deg + 1) * (deg + 2) // 2))
-                params_vec = [0.0 for _ in range(num_terms)]
-            channels_list.append(
-                {
-                    "channel": "RGB",
-                    "formula": f"hybrid_chebyshev_deg_{deg}_fourier",
-                    "parameters": params_vec,
-                }
-            )
-        global_model["channels"] = channels_list
-
-    # Collect parameters for CSV export
-    parameters_dict: Dict[str, Any] = {}
+    # Format global and local model state. Mode B uses one canonical codec payload
+    # for the project, checkpoint-compatible metadata, CSV, and bundle.
+    raw_global_model = dict(context.global_model) if context.global_model else {}
+    mode_b_payload: Dict[str, Any] | None = None
     if is_mode_a:
+        global_model = raw_global_model
+        channel_coefficients = global_model.pop("channel_coefficients", [])
+        channel_asts = global_model.get("channel_asts") or []
+        global_model["channels"] = [
+            {"channel": label, "formula": str(ast), "parameters": [float(value) for value in coefficients]}
+            for label, ast, coefficients in zip(channel_labels, channel_asts, channel_coefficients, strict=True)
+        ]
+        parameters_dict: Dict[str, Any] = {}
         for label, coefficients in zip(channel_labels, channel_coefficients, strict=True):
             for i, value in enumerate(coefficients):
                 parameters_dict[f"{label}_c{i}"] = {"stage": "global", "channel": label, "value": float(value)}
+        mode_expr = {
+            label: str(ast)
+            for label, ast in zip(channel_labels, channel_asts, strict=True)
+        }
     else:
-        if "coefficients" in global_model and global_model["coefficients"] is not None:
-            actual = np.asarray(global_model["coefficients"])
-            flat_coeffs = actual[:, 0] if actual.ndim == 2 else actual.ravel()
-            for i, val in enumerate(flat_coeffs):
-                parameters_dict[f"c{i}"] = {
-                    "stage": "global",
-                    "channel": "RGB",
-                    "value": float(val),
-                }
-        else:
-            deg = global_model.get("degree", 6)
-            num_terms = int(global_model.get("basis_terms_count", (deg + 1) * (deg + 2) // 2))
-            for i in range(num_terms):
-                parameters_dict[f"c{i}"] = {
-                    "stage": "global",
-                    "channel": "RGB",
-                    "value": 0.0,
-                }
+        config = context.config if isinstance(context.config, dict) else {}
+        local_decomposition = context.local_decomposition
+        has_partition = isinstance(local_decomposition, dict) and any(
+            key in local_decomposition for key in ("partition_of_unity", "partition", "pou")
+        )
+        partition = None
+        if not has_partition:
+            partition = {
+                "overlap_ratio": float(config.get("overlap_ratio", 0.20)),
+                "separable": bool(config.get("separable", True)),
+            }
+        mode_b_payload = serialize_mode_b_model(
+            raw_global_model,
+            local_decomposition,
+            channel_labels=list(channel_labels),
+            partition=partition,
+        )
+        mode_expr = {
+            label: _format_mode_b_channel(raw_global_model, index)
+            for index, label in enumerate(channel_labels)
+        }
+        mode_expr["formula"] = (
+            f"chebyshev2d_deg_{raw_global_model.get('degree', 6)} + fourier2d_harmonics + local_patches"
+        )
+        global_model = dict(raw_global_model)
+        global_model.update(mode_b_payload["global_metadata"])
+        global_model["chebyshev_basis"] = mode_b_payload["global_basis"]["chebyshev"]
+        global_model["fourier_basis"] = mode_b_payload["global_basis"]["fourier"]
+        global_model["include_fourier_dc"] = mode_b_payload["global_basis"]["include_fourier_dc"]
+        global_model["coefficients"] = mode_b_payload["coefficients"]
+        global_model["channel_labels"] = mode_b_payload["channel_labels"]
+        global_model["channels"] = mode_b_channel_records(mode_b_payload, mode_expr)
+        global_model["local_patches_count"] = len(mode_b_payload["local_patches"])
+        parameters_dict = mode_b_parameter_table(mode_b_payload)
 
-    # Format local decomposition
+    # Format local decomposition without reducing patches to bounds only.
     local_decomp_data: Dict[str, Any] = {}
     local_patches_list: List[Any] = []
-    if context.local_decomposition:
+    if mode_b_payload is not None:
+        local_patches_list = mode_b_payload["local_patches"]
+        local_decomp_data = {
+            "leaves_count": int(
+                context.local_decomposition.get("leaves_count", len(local_patches_list))
+            ) if context.local_decomposition else len(local_patches_list),
+            "patches": local_patches_list,
+            "partition_of_unity": mode_b_payload["partition_of_unity"],
+        }
+    elif context.local_decomposition:
         actual_patches = context.local_decomposition.get("patches") or []
         local_decomp_data["leaves_count"] = int(
             context.local_decomposition.get("leaves_count", len(actual_patches))
@@ -366,10 +381,12 @@ def main(argv: List[str] | None = None) -> int:
         "local_patches": local_patches_list,
         "final_metrics": metrics,
         "parameters": parameters_dict,
-        "basis_terms_count": len(parameters_dict),
+        "basis_terms_count": int(global_model.get("basis_terms_count", len(parameters_dict))),
         "random_seed": args.seed,
         "status": "COMPLETED",
     }
+    if mode_b_payload is not None:
+        proj_dict["mode_b_model"] = mode_b_payload
 
     if context.condition_report:
         proj_dict["condition_report"] = context.condition_report
@@ -378,23 +395,9 @@ def main(argv: List[str] | None = None) -> int:
     proj_path = out_dir / "mathfield_out.mathfield"
     save_project(proj_dict, proj_path)
 
-    if is_mode_a:
-        channel_asts = global_model.get("channel_asts") or []
-        mode_expr = {
-            label: str(ast)
-            for label, ast in zip(channel_labels, channel_asts, strict=True)
-        }
-    else:
-        mode_expr = {
-            "R": _format_mode_b_channel(global_model, 0),
-            "G": _format_mode_b_channel(global_model, 1),
-            "B": _format_mode_b_channel(global_model, 2),
-            "formula": f"chebyshev2d_deg_{global_model.get('degree', 6)} + fourier2d_harmonics + local_patches",
-        }
-
     global_equations = {
-        channel: _format_mode_b_channel(global_model, index, human=True)
-        for index, channel in enumerate("RGB")
+        channel: _format_mode_b_channel(raw_global_model, index, human=True)
+        for index, channel in enumerate(channel_labels)
     } if not is_mode_a else dict(mode_expr)
 
     export_result = {
@@ -410,6 +413,15 @@ def main(argv: List[str] | None = None) -> int:
         "original_image": img_arr,
         "random_seed": args.seed,
     }
+    if mode_b_payload is not None:
+        export_result["mode_b_model"] = mode_b_payload
+        export_result["local_decomposition"] = local_decomp_data
+        export_result["local_patches"] = local_patches_list
+        export_result["partition_of_unity"] = mode_b_payload["partition_of_unity"]
+        export_result["basis_terms_count"] = proj_dict["basis_terms_count"]
+        export_result["status"] = proj_dict["status"]
+    if context.condition_report:
+        export_result["condition_report"] = context.condition_report
 
     if args.export_csv:
         export_csv_parameters(export_result, out_dir / "parameters.csv")
