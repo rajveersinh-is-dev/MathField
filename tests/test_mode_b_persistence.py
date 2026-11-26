@@ -307,7 +307,8 @@ def test_mode_b_project_checkpoint_bundle_and_standalone_roundtrip(tmp_path: Pat
     assert "differ from the delivered reference" in rejected.stderr
 
 
-def test_actual_mode_b_pipeline_standalone_matches_rendered_pixels(tmp_path: Path) -> None:
+@pytest.mark.parametrize("separable", [True, False])
+def test_actual_mode_b_pipeline_standalone_matches_rendered_pixels(tmp_path: Path, separable: bool) -> None:
     height, width = 10, 12
     y_grid, x_grid = np.mgrid[0:height, 0:width] / np.array([height - 1, width - 1])[:, None, None]
     rgba = np.stack(
@@ -327,22 +328,31 @@ def test_actual_mode_b_pipeline_standalone_matches_rendered_pixels(tmp_path: Pat
         "split_threshold": 0.0,
         "local_freq": 1,
         "overlap_ratio": 0.20,
+        "separable": separable,
     }
     context = PipelineContext(image=rgba, domain=domain, config=config)
     assert ModeBPipeline(config=config).execute(context) == StageStatus.COMPLETED
     assert len(context.local_decomposition["patches"]) >= 4
+    assert context.local_decomposition["partition_of_unity"]["separable"] is separable
 
     payload = serialize_mode_b_model(
         context.global_model,
         context.local_decomposition,
         channel_labels=list("RGBA"),
-        partition={"overlap_ratio": 0.20, "separable": True},
+        partition={"overlap_ratio": 0.20, "separable": separable},
     )
+    assert payload["partition_of_unity"]["separable"] is separable
     restored_global, restored_local = deserialize_mode_b_model(payload)
     restored = PipelineContext(image=rgba, domain=domain)
     restored.global_model = restored_global
     restored.local_decomposition = restored_local
     np.testing.assert_allclose(_render_global_local(restored), context.rendered_image, rtol=0.0, atol=1e-10)
+
+    checkpoint_wire = json.loads(json.dumps(CheckpointSerializer.serialize_context(context, mode="fidelity")))
+    checkpoint_context = PipelineContext(image=rgba, domain=domain, config=config)
+    CheckpointSerializer.deserialize_context(checkpoint_wire, checkpoint_context)
+    assert checkpoint_context.local_decomposition["partition_of_unity"]["separable"] is separable
+    np.testing.assert_allclose(_render_global_local(checkpoint_context), context.rendered_image, rtol=0.0, atol=1e-10)
 
     script_path = tmp_path / "reproduce.py"
     export_standalone_script(

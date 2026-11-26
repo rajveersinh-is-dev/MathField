@@ -10,6 +10,7 @@ comprehensive export generation, seed control, and test automation hooks.
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 import time
 from pathlib import Path
@@ -31,6 +32,26 @@ from mathfield.export.pdf_report import export_pdf_report
 from mathfield.export.project_file import save_project
 from mathfield.export.raster import export_jpg, export_png
 from mathfield.export.svg import export_svg
+
+
+def _finite_nonnegative_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(parsed) or parsed < 0.0:
+        raise argparse.ArgumentTypeError("must be finite and non-negative")
+    return parsed
+
+
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return parsed
 
 
 def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
@@ -55,19 +76,19 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--lambda-reg",
-        type=float,
+        type=_finite_nonnegative_float,
         default=0.01,
         help="Complexity regularization penalty strength (lambda)",
     )
     parser.add_argument(
         "--max-iter",
-        type=int,
+        type=_positive_int,
         default=15,
         help="Maximum optimization iterations / generations",
     )
     parser.add_argument(
         "--tolerance",
-        type=float,
+        type=_finite_nonnegative_float,
         default=1e-4,
         help="Optimization convergence tolerance threshold",
     )

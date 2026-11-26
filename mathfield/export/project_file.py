@@ -82,6 +82,10 @@ def _json_fallback(obj: Any) -> Any:
     return str(obj)
 
 
+def _reject_nonfinite_json(token: str) -> None:
+    raise ProjectFileError(f"Non-finite JSON number {token!r} is not allowed")
+
+
 def save_project(
     project_data: Dict[str, Any],
     output_path: Union[str, Path],
@@ -97,7 +101,10 @@ def save_project(
         payload["final_metrics"] = dict(project_data["final_metrics"])
     validate_project_dict(payload)
 
-    content = json.dumps(payload, default=_json_fallback, indent=2, ensure_ascii=False)
+    try:
+        content = json.dumps(payload, default=_json_fallback, indent=2, ensure_ascii=False, allow_nan=False)
+    except ValueError as exc:
+        raise ProjectFileError("Project contains a non-finite numeric value") from exc
     out_p.write_text(content, encoding="utf-8")
 
 
@@ -109,7 +116,7 @@ def load_project(path: Union[str, Path]) -> Dict[str, Any]:
 
     try:
         content = p.read_text(encoding="utf-8-sig")
-        data = json.loads(content)
+        data = json.loads(content, parse_constant=_reject_nonfinite_json)
     except json.JSONDecodeError as exc:
         raise ProjectFileError(f"Corrupt JSON in project file: {exc}") from exc
 

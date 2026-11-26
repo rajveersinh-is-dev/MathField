@@ -196,7 +196,7 @@ class ModeBPipeline:
             return StageStatus.CANCELLED
 
         overlap_ratio = float(cfg.get("overlap_ratio", 0.20))
-        pou = WendlandPartitionOfUnity(overlap_ratio=overlap_ratio, separable=True)
+        pou = WendlandPartitionOfUnity(overlap_ratio=overlap_ratio, separable=bool(cfg.get("separable", True)))
 
         local_correction = np.zeros_like(img_arr)
         patches: List[LocalPatch] = []
@@ -250,6 +250,7 @@ class ModeBPipeline:
             "root": root,
             "leaves_count": len(leaves),
             "patches": patches,
+            "partition_of_unity": {"overlap_ratio": pou.overlap_ratio, "separable": pou.separable},
         }
 
         # Composite surface

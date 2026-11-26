@@ -10,12 +10,14 @@ import zipfile
 from pathlib import Path
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from benchmarks.ablations import get_ablation_config
 from cli import main as cli_main
 from examples.generate_sample import build_sample
 from mathfield.export.bundle import export_bundle
+from mathfield.export.project_file import ProjectFileError, load_project, save_project
 from mathfield.export.raster import _model_to_image, natural_key, to_uint8_array
 from mathfield.export.svg import export_svg
 
@@ -163,3 +165,57 @@ def test_demo_scripts_have_no_machine_specific_paths() -> None:
         text = (Path(__file__).resolve().parents[1] / name).read_text(encoding="utf-8")
         assert ".gemini" not in text
         assert "C:/Users" not in text
+
+
+@pytest.mark.parametrize(
+    ("mode", "flag", "value"),
+    [
+        ("discovery", "--lambda-reg", "nan"),
+        ("discovery", "--lambda-reg", "inf"),
+        ("discovery", "--lambda-reg", "-1"),
+        ("fidelity", "--lambda-reg", "nan"),
+        ("discovery", "--tolerance", "nan"),
+        ("fidelity", "--tolerance", "-1"),
+        ("discovery", "--max-iter", "0"),
+    ],
+)
+def test_cli_rejects_invalid_numeric_arguments_before_writing_outputs(
+    tmp_path: Path,
+    mode: str,
+    flag: str,
+    value: str,
+) -> None:
+    image = tmp_path / "input.png"
+    Image.fromarray(np.zeros((8, 8, 3), dtype=np.uint8)).save(image)
+    output = tmp_path / "out"
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, str(root / "cli.py"), "-i", str(image), "-o", str(output), "-m", mode, flag, value, "-q"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+    assert result.returncode != 0
+    assert not output.exists()
+    assert not (output / "mathfield_out.mathfield").exists()
+
+
+def test_project_file_rejects_non_finite_numbers_on_save_and_load(tmp_path: Path) -> None:
+    project = {
+        "schema_version": "1.0.0",
+        "coordinate_domain": {"x_min": -1.0, "x_max": 1.0, "y_min": -1.0, "y_max": 1.0},
+        "color_space": "RGB",
+        "global_model": {"channels": []},
+        "final_metrics": {"mse": float("nan"), "psnr": 100.0},
+    }
+    target = tmp_path / "invalid.mathfield"
+    with pytest.raises(ProjectFileError, match="non-finite"):
+        save_project(project, target)
+    assert not target.exists()
+
+    target.write_text(json.dumps(project), encoding="utf-8")
+    with pytest.raises(ProjectFileError, match="Non-finite"):
+        load_project(target)
