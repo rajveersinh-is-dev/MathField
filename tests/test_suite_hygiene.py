@@ -29,6 +29,14 @@ def test_e2e_suites_do_not_mask_import_regressions() -> None:
             assert "cuda" in message or "native" in message or "dll" in message
 
 
+def test_runtime_version_matches_package_metadata() -> None:
+    from importlib.metadata import version
+
+    import mathfield
+
+    assert mathfield.__version__ == version("mathfield")
+
+
 def test_worker_signal_bus_is_documented_as_headless() -> None:
     source = (ROOT / "mathfield" / "ui" / "workers.py").read_text(encoding="utf-8")
     assert "not a Qt signal" in source

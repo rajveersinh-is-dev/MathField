@@ -33,7 +33,7 @@ python docs/demo/make_demo.py
 | Capability | What it does |
 | :--- | :--- |
 | **Mode A — discovery** | Pareto-optimal symbolic search with BIC pruning, balancing error and complexity via $J(M)=E(M)+\lambda C(M)$. A standalone Variable Projection optimizer is also provided in `mathfield/core/optimize/`. |
-| **Mode B — fidelity** | Dense Chebyshev + Fourier expansions, Sobolev-guided adaptive quadtree patches and separable Wendland $C^2$ partition-of-unity blending. |
+| **Mode B — fidelity** | Dense Chebyshev + Fourier expansions, bounded-memory streamed fitting, Sobolev-guided adaptive quadtree patches and separable Wendland $C^2$ partition-of-unity blending. |
 | **Multi-tier evaluation** | Vectorised NumPy, an optional native C++/OpenMP kernel and an optional CUDA backend, with automatic fallback. |
 | **Out-of-core tiling** | Bounded-memory tiled/memmapped rendering for images up to 8K. |
 | **Standalone exports** | PNG/JPG, SVG, CSV, LaTeX, PDF, `.mathfield` JSON, zero-import reproduction scripts and deterministic reproducibility bundles. |
@@ -138,7 +138,7 @@ flowchart TD
 ## Testing and verification
 
 ```powershell
-python -m pytest                 # 561 tests: 207 unit + 354 end-to-end
+python -m pytest                 # 620 tests: 266 unit + 354 end-to-end
 python -m pytest tests/          # unit / integration suite
 python -m pytest -m tier1        # feature-coverage e2e tier
 python -m ruff check .           # static analysis
@@ -167,7 +167,8 @@ report = run_benchmarks(image, warmup_runs=3, timed_runs=7)
 
 * **Zero preloaded answers** — no lookup tables, hardcoded coefficients or memorised image approximations.
 * **Dynamic first-principles evaluation** — metrics, benchmarks and exported formulas are computed from the fitted model at run time.
-* **Verifiable reproducibility** — generated bundles contain deterministic archives and scripts that evaluate the exported equations without importing MathField. The full local-patch model is preserved in the `.mathfield` project file.
+* **Verifiable reproducibility** — generated bundles contain deterministic archives and scripts that evaluate the exported equations without importing MathField. The full local-patch model is preserved in the `.mathfield` project file, and CLI bundles verify reproduced pixels against the delivered reconstruction.
+* **Visible alpha policy** — RGBA color fitting and headline fidelity metrics ignore fully transparent RGB, fit and report alpha separately, and retain raw straight-RGBA diagnostics for inspection.
 
 Draft manuscript: [`docs/paper/mathfield_paper.tex`](docs/paper/mathfield_paper.tex).
 
